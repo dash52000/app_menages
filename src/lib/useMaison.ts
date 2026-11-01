@@ -8,8 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { estErreurReseau, supabase } from './supabase.ts';
 import { CLES, ecrire, lire } from './stockage.ts';
 import { ajouterJours, aujourdhui, ecart, type Jour } from './dates.ts';
-import { derniereFoisInitiale } from './fraicheur.ts';
-import { cleFiche } from './fiches.ts';
+import { dateApresReprise, derniereFoisInitiale } from './fraicheur.ts';
+import { cleFiche, ficheDe } from './fiches.ts';
 import { normaliser } from './normalise.ts';
 import { PRODUITS, emojiPour, type EtatProduit } from './produits.ts';
 import type { Action, Foyer, Membre, Piece, Produit, Profil, Tache } from './types.ts';
@@ -45,6 +45,7 @@ interface Etat {
 interface Cache extends Etat {
   foyerId: string;
   base15?: boolean;
+  base16?: boolean;
 }
 
 const VIDE: Etat = { foyer: null, profils: [], pieces: [], taches: [], produits: [] };
@@ -64,9 +65,16 @@ function tableAbsente(e: { code?: string; message?: string } | null): boolean {
   return Boolean(e && (e.code === 'PGRST205' || e.code === '42P01' || /menage_produits/.test(e.message ?? '')));
 }
 
-function sansColonnes15(v: Ligne | Ligne[] | undefined): Ligne | Ligne[] | undefined {
-  const retirer = (l: Ligne) => Object.fromEntries(Object.entries(l).filter(([k]) => !(COLONNES_15 as readonly string[]).includes(k)));
+/** Colonne ajoutée en V1.6 (interrupteur En marche / À l'arrêt d'une pièce). */
+const COLONNES_16 = ['en_pause_depuis'] as const;
+
+function sansColonnes(v: Ligne | Ligne[] | undefined, colonnes: readonly string[]): Ligne | Ligne[] | undefined {
+  const retirer = (l: Ligne) => Object.fromEntries(Object.entries(l).filter(([k]) => !colonnes.includes(k)));
   return Array.isArray(v) ? v.map(retirer) : v ? retirer(v) : v;
+}
+
+function sansColonnes15(v: Ligne | Ligne[] | undefined): Ligne | Ligne[] | undefined {
+  return sansColonnes(v, COLONNES_15);
 }
 
 /** Champs d'une tâche qui bougent quand on la fait, la reporte ou la réserve. */
@@ -125,7 +133,7 @@ function appliquer(e: Etat, op: Operation): Etat {
   return suite;
 }
 
-async function envoyer(op: Operation, base15: boolean): Promise<'ok' | 'reseau' | 'refus'> {
+async function envoyer(op: Operation, base15: boolean, base16: boolean): Promise<'ok' | 'reseau' | 'refus' | 'colonne'> {
   const essai = async (valeurs: Ligne | Ligne[] | undefined) => {
     const q = supabase.from(op.table);
     return op.type === 'insert'
@@ -136,9 +144,21 @@ async function envoyer(op: Operation, base15: boolean): Promise<'ok' | 'reseau' 
   };
   try {
     const tache = op.table === 'menage_taches';
-    let r = await essai(tache && !base15 ? sansColonnes15(op.valeurs) : op.valeurs);
-    // Colonne inconnue : la base est encore en V1, on renvoie sans les champs V1.5.
+    const piece = op.table === 'menage_pieces';
+    let valeurs = op.valeurs;
+    if (tache && !base15) valeurs = sansColonnes15(valeurs);
+    if (piece && !base16) valeurs = sansColonnes(valeurs, COLONNES_16);
+    if (op.type === 'update' && valeurs && !Array.isArray(valeurs) && !Object.keys(valeurs).length) return 'ok';
+    let r = await essai(valeurs);
+    // Colonne inconnue : la base n'est pas à jour, on renvoie sans les champs récents.
     if (r.error?.code === 'PGRST204' && tache) r = await essai(sansColonnes15(op.valeurs));
+    if (r.error?.code === 'PGRST204' && piece) {
+      const reste = sansColonnes(op.valeurs, COLONNES_16);
+      // Rien d'autre à enregistrer (mise à l'arrêt) : la base n'est pas à jour, on le signale.
+      if (op.type === 'update' && reste && !Array.isArray(reste) && !Object.keys(reste).length) return 'colonne';
+      r = await essai(reste);
+      if (!r.error) return 'colonne';
+    }
     if (!r.error) return 'ok';
     if (r.error.code === '23505') return 'ok'; // déjà enregistrée lors d'un envoi précédent
     if (estErreurReseau(r.error)) return 'reseau';
@@ -227,6 +247,10 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   // La base a-t-elle les ajouts de la V1.5 (placard, fiches) ?
   const [base15, setBase15] = useState<boolean>(() => lire<Cache | null>(CLES.cache, null)?.base15 ?? true);
   const [detailBase, setDetailBase] = useState<string | null>(null);
+  // La base a-t-elle la colonne de la V1.6 (pièce à l'arrêt) ?
+  const [base16, setBase16] = useState<boolean>(() => lire<Cache | null>(CLES.cache, null)?.base16 ?? true);
+  const base16Ref = useRef(base16);
+  base16Ref.current = base16;
   const base15Ref = useRef(base15);
   base15Ref.current = base15;
   const [statut, setStatut] = useState<Statut>('chargement');
@@ -238,13 +262,15 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   statutRef.current = statut;
   const file = useRef<Operation[]>(lire<Operation[]>(CLES.fileAttente, []));
   const envoiEnCours = useRef<Promise<boolean> | null>(null);
+  const aRecharger = useRef(false);
+  const chargerRef = useRef<(() => Promise<void>) | null>(null);
   const onRefusRef = useRef(onRefus);
   onRefusRef.current = onRefus;
 
   // Cache : l'appli s'ouvre sur le dernier état connu, même sans réseau.
   useEffect(() => {
-    if (etat.foyer) ecrire(CLES.cache, { ...etat, foyerId, base15 } satisfies Cache);
-  }, [etat, foyerId, base15]);
+    if (etat.foyer) ecrire(CLES.cache, { ...etat, foyerId, base15, base16 } satisfies Cache);
+  }, [etat, foyerId, base15, base16]);
 
   const sauverFile = () => {
     ecrire(CLES.fileAttente, file.current.length ? file.current : null);
@@ -261,14 +287,25 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     const envoi = Promise.resolve().then(async () => {
       try {
         while (file.current.length) {
-          const r = await envoyer(file.current[0], base15Ref.current);
+          const r = await envoyer(file.current[0], base15Ref.current, base16Ref.current);
           if (r === 'reseau') {
             setStatut('hors-ligne');
             return false;
           }
           if (r === 'refus') onRefusRef.current?.();
+          if (r === 'colonne') {
+            // Base pas encore en V1.6 : on le retient, on prévient, et on recharge l'état réel.
+            setBase16(false);
+            base16Ref.current = false;
+            onRefusRef.current?.();
+            aRecharger.current = true;
+          }
           file.current.shift();
           sauverFile();
+        }
+        if (aRecharger.current) {
+          aRecharger.current = false;
+          window.setTimeout(() => void chargerRef.current?.(), 0);
         }
         return true;
       } finally {
@@ -291,12 +328,14 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
 
   const charger = useCallback(async () => {
     if (!(await vider())) return; // pas de réseau : on garde l'écran tel quel
-    const [f, p, pi, t, pr] = await Promise.all([
+    const [f, p, pi, t, pr, colonne16] = await Promise.all([
       supabase.from('menage_foyers').select('*').eq('id', foyerId).maybeSingle(),
       supabase.from('menage_profils').select('*').eq('foyer_id', foyerId).order('cree_le', { ascending: true }),
       supabase.from('menage_pieces').select('*').eq('foyer_id', foyerId).order('ordre', { ascending: true }),
       supabase.from('menage_taches').select('*').eq('foyer_id', foyerId),
       supabase.from('menage_produits').select('*').eq('foyer_id', foyerId).order('cree_le', { ascending: true }),
+      // Sonde de la colonne V1.6, même sans aucune pièce.
+      supabase.from('menage_pieces').select('id, en_pause_depuis').eq('foyer_id', foyerId).limit(1),
     ]);
     const produitsAbsents = tableAbsente(pr.error);
     if (f.error || p.error || pi.error || t.error || (pr.error && !produitsAbsents)) {
@@ -304,6 +343,10 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
       return;
     }
     setBase15(!produitsAbsents);
+    const e16 = colonne16.error as { code?: string; message?: string } | null;
+    const sans16 = Boolean(e16 && (e16.code === '42703' || e16.code === 'PGRST204' || /en_pause_depuis/.test(e16.message ?? '')));
+    setBase16(!sans16);
+    base16Ref.current = !sans16;
     setDetailBase(produitsAbsents ? `${pr.error?.code ?? ''} ${pr.error?.message ?? ''}`.trim() : null);
     if (!f.data) {
       setStatut('introuvable');
@@ -321,6 +364,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     setEtat(e);
     setStatut('ok');
   }, [foyerId, vider]);
+  chargerRef.current = charger;
 
   // Chargement, temps réel, rechargement au retour sur l'appli ou du réseau.
   useEffect(() => {
@@ -673,7 +717,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
         maj_le: new Date().toISOString(),
       };
       executer({ table: 'menage_produits', type: 'insert', valeurs: ligne as unknown as Ligne });
-      noter('produit_cree', { produit: n.nom, catalogue: Boolean(n.cle), etat: ligne.etat, depuis });
+      noter('produit_cree', { produit: n.nom, catalogue: Boolean(n.cle), famille: PRODUITS.find((x) => x.cle === n.cle)?.famille ?? null, etat: ligne.etat, depuis });
       return ligne;
     },
     [executer, foyerId, moi, noter],
@@ -725,11 +769,52 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     [ajouterProduit, executer, moi, noter],
   );
 
+  // ---------- Pièce à l'arrêt (poêle hors saison) ----------------------------
+
+  /** À l'arrêt : les tâches de la pièce sortent du check et de la jauge, leur fraîcheur est figée. */
+  const mettreALArret = useCallback(
+    (piece: Piece): boolean => {
+      if (!base16Ref.current) return false;
+      executer({ table: 'menage_pieces', type: 'update', id: piece.id, valeurs: { en_pause_depuis: aujourdhui() } });
+      noter('piece_pause', { piece: piece.nom, action: 'arret' });
+      return true;
+    },
+    [executer, noter],
+  );
+
+  /**
+   * Remise en marche : chaque tâche reprend où elle en était. Sa date de
+   * référence avance de la durée de l'arrêt (ou au jour même si elle a été
+   * faite pendant l'arrêt), pour que la fraîcheur figée reparte telle quelle.
+   */
+  const remettreEnMarche = useCallback(
+    (piece: Piece) => {
+      const depuis = piece.en_pause_depuis;
+      if (!depuis) return;
+      const jour = aujourdhui();
+      for (const t of etatRef.current.taches.filter((x) => x.piece_id === piece.id && !ficheDe(x)?.touteAnnee)) {
+        if (!t.derniere_fois) continue;
+        const nouvelle = dateApresReprise(t.derniere_fois, depuis, jour);
+        if (nouvelle === t.derniere_fois) continue;
+        executer({
+          table: 'menage_taches',
+          type: 'update',
+          id: t.id,
+          valeurs: { derniere_fois: nouvelle, reporte_le: null, reporte_jusqu_au: null },
+        });
+      }
+      executer({ table: 'menage_pieces', type: 'update', id: piece.id, valeurs: { en_pause_depuis: null } });
+      noter('piece_pause', { piece: piece.nom, action: 'marche', jours_arret: Math.max(0, ecart(depuis, jour)) });
+    },
+    [executer, noter],
+  );
+
   const autres = useMemo(() => etat.profils.filter((p) => p.id !== moi), [etat.profils, moi]);
 
   return {
     ...etat,
     base15,
+    base16,
     detailBase,
     statut,
     enAttente,
@@ -751,6 +836,8 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     modifierProduit,
     supprimerProduit,
     ajouterAuxCourses,
+    mettreALArret,
+    remettreEnMarche,
   };
 }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { resoudreBesoin, trouverProduit, type Besoin } from '../lib/fiches.ts';
-import { PRODUITS_PAR_CLE } from '../lib/produits.ts';
+import { ETATS, PRODUITS_PAR_CLE, estSpecialise } from '../lib/produits.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import { Illus } from './Illus.tsx';
 import type { Message } from './Bandeau.tsx';
@@ -16,6 +16,7 @@ export function infoProduit(ref: string, maison: Maison): { nom: string; icone: 
 /** Le produit à prendre pour une tâche, en une ligne (sur les cartes du check). */
 export function LigneProduit({ options, maison }: { options: string[]; maison: Maison }) {
   const b = resoudreBesoin(options, maison.produits);
+  if (!b) return null;
   const placardVide = maison.produits.length === 0;
   const ref = b.choisi ?? b.ideal;
   const info = infoProduit(ref, maison);
@@ -43,13 +44,17 @@ export function BesoinFiche({
   maison: Maison;
   informer: (m: Message) => void;
 }) {
-  const b: Besoin = resoudreBesoin(options, maison.produits);
+  const resolu = resoudreBesoin(options, maison.produits);
+  const [envoi, setEnvoi] = useState<'non' | 'encours' | 'fait'>('non');
+  if (!resolu) return null;
+  const b: Besoin = resolu;
   const ideal = infoProduit(b.ideal, maison);
   const choisi = b.choisi ? infoProduit(b.choisi, maison) : null;
-  const [envoi, setEnvoi] = useState<'non' | 'encours' | 'fait'>('non');
   const xIdeal = trouverProduit(b.ideal, maison.produits);
   const dejaAuxCourses = Boolean(xIdeal?.courses_le);
-  const alternatives = options.slice(1).map((o) => infoProduit(o, maison).nom);
+  const alternatives = options
+    .filter((o) => o !== b.ideal && !estSpecialise(o))
+    .map((o) => infoProduit(o, maison).nom);
 
   const auxCourses = async () => {
     setEnvoi('encours');
@@ -92,5 +97,65 @@ export function BesoinFiche({
           </button>
         ))}
     </li>
+  );
+}
+
+/** Un produit suivi directement depuis une pièce (les granulés sur la page du poêle). */
+export function SuiviProduit({ cle, maison, informer }: { cle: string; maison: Maison; informer: (m: Message) => void }) {
+  const [envoi, setEnvoi] = useState(false);
+  const catalogue = PRODUITS_PAR_CLE[cle];
+  if (!catalogue || !maison.base15) return null;
+  const x = maison.produits.find((y) => y.cle === cle);
+
+  if (!x) {
+    return (
+      <button
+        className="suivi-produit ajout"
+        onClick={() => {
+          maison.ajouterProduit({ cle, nom: catalogue.nom, icone: catalogue.icone }, 'piece');
+          informer({ texte: `${catalogue.nom} suivis dans le placard` });
+        }}
+      >
+        <Illus nom={catalogue.icone} taille={32} />
+        <span>
+          <strong>{catalogue.nom}</strong>
+          <span className="discret petit">Suivre le stock dans le placard</span>
+        </span>
+        <span className="plus-petit" aria-hidden>
+          +
+        </span>
+      </button>
+    );
+  }
+
+  const auxCourses = async () => {
+    setEnvoi(true);
+    const r = await maison.ajouterAuxCourses(x, 'piece');
+    setEnvoi(false);
+    informer({
+      texte: r === 'ajoute' ? `${x.nom} ajoutés aux courses` : r === 'deja' ? `${x.nom} sont déjà sur la liste` : 'Pas de réseau : réessaie plus tard.',
+    });
+  };
+
+  return (
+    <div className="suivi-produit">
+      <Illus nom={x.icone} taille={32} />
+      <span>
+        <strong>{x.nom}</strong>
+        <span className="discret petit">{x.etat !== 'ok' && x.courses_le ? 'Sur la liste de courses' : 'Stock du placard'}</span>
+      </span>
+      {x.etat !== 'ok' && !x.courses_le && (
+        <button className="bouton-caddie" disabled={envoi} onClick={() => void auxCourses()} aria-label={`${x.nom} : ajouter aux courses`}>
+          <Illus nom="shopping-cart" taille={24} />
+        </button>
+      )}
+      <button
+        className={`pastille-etat etat-${x.etat}`}
+        onClick={() => maison.changerEtatProduit(x, ETATS[x.etat].suivant, 'fiche')}
+        aria-label={`${x.nom} : ${ETATS[x.etat].libelle}, toucher pour changer`}
+      >
+        {ETATS[x.etat].libelle}
+      </button>
+    </div>
   );
 }

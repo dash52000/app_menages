@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { besoinsDe } from '../lib/fiches.ts';
-import { ETATS, ICONES_PRODUITS, PRODUITS, type EtatProduit } from '../lib/produits.ts';
+import { ETATS, FAMILLES, ICONES_PRODUITS, PRODUITS, type EtatProduit } from '../lib/produits.ts';
+import { estSaisonniere } from '../lib/catalogue.ts';
+import { normaliser } from '../lib/normalise.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Produit } from '../lib/types.ts';
 import { Feuille } from './Feuille.tsx';
@@ -24,8 +26,8 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
           <h2>Une mise à jour de la base à faire</h2>
           <p className="discret">
             Le placard a besoin d’une nouvelle table. Dans Supabase : SQL Editor → New query, colle le fichier
-            supabase/schema.sql en version 1.5 (2e ligne : « schéma Supabase V1.5 ») et lance « Run ». Le résultat
-            doit afficher « true » deux fois.
+            supabase/schema.sql en version 1.5 (2e ligne : « schéma Supabase V1.6 ») et lance « Run ». Le résultat
+            doit afficher « true » partout.
           </p>
           <button
             className="bouton-secondaire"
@@ -129,7 +131,10 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
 
 /** Premier passage : on coche ce qu'on a ; les indispensables non cochés passent « à racheter ». */
 function ConfigPlacard({ maison }: { maison: Maison }) {
-  const [enStock, setEnStock] = useState<Set<string>>(() => new Set(PRODUITS.filter((x) => x.indispensable).map((x) => x.cle)));
+  const poele = maison.pieces.some(estSaisonniere);
+  const [enStock, setEnStock] = useState<Set<string>>(
+    () => new Set([...PRODUITS.filter((x) => x.indispensable).map((x) => x.cle), ...(poele ? ['granules'] : [])]),
+  );
   const basculer = (cle: string) =>
     setEnStock((s) => {
       const n = new Set(s);
@@ -152,6 +157,7 @@ function ConfigPlacard({ maison }: { maison: Maison }) {
   };
 
   const manquants = PRODUITS.filter((x) => x.indispensable && !enStock.has(x.cle)).length;
+  const aussi = PRODUITS.filter((x) => !x.indispensable && (x.courant || (poele && x.cle === 'granules')));
 
   return (
     <section className="ecran">
@@ -163,7 +169,8 @@ function ConfigPlacard({ maison }: { maison: Maison }) {
       </p>
       <div className="grille-choix">{PRODUITS.filter((x) => x.indispensable).map(tuile)}</div>
       <h2 className="titre-section">Vous avez aussi ?</h2>
-      <div className="grille-choix">{PRODUITS.filter((x) => !x.indispensable).map(tuile)}</div>
+      <div className="grille-choix">{aussi.map(tuile)}</div>
+      <p className="discret petit">Une soixantaine d’autres produits s’ajoutent ensuite avec « + Ajouter un produit ».</p>
       <button className="bouton-principal bouton-collant" onClick={() => maison.configurerPlacard(enStock)}>
         C’est noté{manquants ? ` · ${manquants} à racheter` : ''}
       </button>
@@ -171,27 +178,75 @@ function ConfigPlacard({ maison }: { maison: Maison }) {
   );
 }
 
+/** Ajouter un produit : recherche dans le catalogue, rangé par famille, ou produit libre. */
 function FeuilleAjoutProduit({ maison, onFermer, informer }: { maison: Maison; onFermer: () => void; informer: (m: Message) => void }) {
-  const [nom, setNom] = useState('');
+  const [recherche, setRecherche] = useState('');
+  const [libre, setLibre] = useState(false);
   const [icone, setIcone] = useState('lotion-bottle');
   const presents = new Set(maison.produits.map((x) => x.cle));
-  const suggestions = PRODUITS.filter((x) => !presents.has(x.cle));
+  const q = normaliser(recherche);
+  const correspond = (x: (typeof PRODUITS)[number]) =>
+    !q || normaliser(x.nom).includes(q) || normaliser(x.usage).includes(q);
+  const groupes = FAMILLES.map((f) => ({
+    famille: f,
+    produits: PRODUITS.filter((x) => x.famille === f.cle && !presents.has(x.cle) && correspond(x)),
+  })).filter((g) => g.produits.length);
+  const exact = PRODUITS.some((x) => normaliser(x.nom) === q) || maison.produits.some((x) => normaliser(x.nom) === q);
 
-  const ajouter = (n: { cle?: string; nom: string; icone: string }) => {
-    maison.ajouterProduit(n, n.cle ? 'suggestion' : 'libre');
+  const ajouter = (n: { cle?: string; nom: string; icone: string }, depuis: string) => {
+    maison.ajouterProduit(n, depuis);
     informer({ texte: `${n.nom} ajouté au placard` });
     onFermer();
   };
 
+  if (libre) {
+    return (
+      <Feuille titre="Nouveau produit" onFermer={onFermer}>
+        <label className="champ">
+          <span>Nom</span>
+          <input value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Nettoyant plaque induction…" maxLength={40} autoFocus />
+        </label>
+        <div className="bloc">
+          <p className="etiquette-champ">Illustration</p>
+          <div className="defilant">
+            {ICONES_PRODUITS.map((i) => (
+              <button key={i} className={`choix-icone ${i === icone ? 'active' : ''}`} onClick={() => setIcone(i)} aria-label={i}>
+                <Illus nom={i} taille={32} />
+              </button>
+            ))}
+          </div>
+        </div>
+        <button className="bouton-principal" disabled={!recherche.trim()} onClick={() => ajouter({ nom: recherche.trim(), icone }, 'libre')}>
+          Ajouter
+        </button>
+        <button className="lien" onClick={() => setLibre(false)}>
+          Retour au catalogue
+        </button>
+      </Feuille>
+    );
+  }
+
   return (
     <Feuille titre="Ajouter un produit" onFermer={onFermer}>
-      {suggestions.length > 0 && (
-        <div className="bloc">
-          <p className="etiquette-champ">Suggestions</p>
+      <label className="champ">
+        <span>Chercher</span>
+        <input
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder="vitrocéramique, parquet, moisissure…"
+          type="search"
+        />
+      </label>
+      {groupes.map((g) => (
+        <section key={g.famille.cle} className="bloc">
+          <p className="etiquette-champ">{g.famille.nom}</p>
           <ul className="liste-suggestions">
-            {suggestions.map((x) => (
+            {g.produits.map((x) => (
               <li key={x.cle}>
-                <button className="suggestion-produit" onClick={() => ajouter({ cle: x.cle, nom: x.nom, icone: x.icone })}>
+                <button
+                  className="suggestion-produit"
+                  onClick={() => ajouter({ cle: x.cle, nom: x.nom, icone: x.icone }, q ? 'recherche' : 'catalogue')}
+                >
                   <Illus nom={x.icone} taille={32} />
                   <span>
                     <strong>{x.nom}</strong>
@@ -204,22 +259,26 @@ function FeuilleAjoutProduit({ maison, onFermer, informer }: { maison: Maison; o
               </li>
             ))}
           </ul>
-        </div>
+        </section>
+      ))}
+      {groupes.length === 0 && <p className="discret">Rien dans le catalogue pour « {recherche} ».</p>}
+      {recherche.trim() && !exact && (
+        <button className="suggestion-produit creer-produit" onClick={() => setLibre(true)}>
+          <Illus nom="sparkles" taille={32} />
+          <span>
+            <strong>Créer « {recherche.trim()} »</strong>
+            <span className="discret petit">Un produit à vous, absent du catalogue</span>
+          </span>
+          <span className="plus-petit" aria-hidden>
+            +
+          </span>
+        </button>
       )}
-      <label className="champ">
-        <span>Autre produit</span>
-        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nettoyant parquet…" maxLength={40} />
-      </label>
-      <div className="defilant">
-        {ICONES_PRODUITS.map((i) => (
-          <button key={i} className={`choix-icone ${i === icone ? 'active' : ''}`} onClick={() => setIcone(i)} aria-label={i}>
-            <Illus nom={i} taille={32} />
-          </button>
-        ))}
-      </div>
-      <button className="bouton-principal" disabled={!nom.trim()} onClick={() => ajouter({ nom: nom.trim(), icone })}>
-        Ajouter
-      </button>
+      {!recherche.trim() && (
+        <button className="bouton-secondaire" onClick={() => setLibre(true)}>
+          Un autre produit…
+        </button>
+      )}
     </Feuille>
   );
 }

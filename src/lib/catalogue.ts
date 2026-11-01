@@ -162,7 +162,28 @@ export const CATALOGUE: PieceCatalogue[] = [
       t('Nettoyer le mobilier', 'chair', 90, 20, false),
     ],
   },
+  {
+    cle: 'poele',
+    nom: 'Poêle à granulés',
+    icone: 'fire',
+    coche: false,
+    taches: [
+      t('Vider le creuset', 'bucket', 3, 2),
+      t('Cendrier et aspiration', 'dashing-away', 7, 15),
+      t('Nettoyer la vitre', 'window', 7, 5),
+      t('Entretien annuel par un pro', 'toolbox', 365, 10),
+    ],
+  },
 ];
+
+/** Une pièce qui a un interrupteur En marche / À l'arrêt bien visible (le poêle). */
+export function estSaisonniere(piece: { nom: string; icone: string }): boolean {
+  const n = piece.nom
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return piece.icone === 'fire' || /poele|chauffage|cheminee|insert/.test(n);
+}
 
 /** Banque d'illustrations proposées pour une pièce ou une tâche ajoutée à la main. */
 export const BANQUE_ICONES = [

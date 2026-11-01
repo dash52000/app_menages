@@ -2,7 +2,7 @@
 
 Le suivi du ménage à deux, pour Damien et Laeti. Web app installable (PWA) sur iPhone et Android, synchronisée en temps réel via Supabase, hébergée sur GitHub Pages. Nom provisoire : il se change dans `src/config.ts`, `index.html` et `vite.config.ts`.
 
-Ce dépôt contient la **V1.5** :
+Ce dépôt contient la **V1.6** :
 
 - **Configuration en 5 minutes** : on coche ses pièces, l'appli propose les tâches courantes avec un rythme et une durée par défaut.
 - **Le check du jour** : 5 tâches au plus, les petites victoires d'abord, quatre boutons (Fait, Fait par l'autre, Demain, Je prends). Un check manqué se rattrape au suivant (« Depuis mardi, qu'est-ce qui a été fait ? »), avec « Changer le jour » après coup.
@@ -18,11 +18,18 @@ Nouveautés de la **V1.5** :
 - **Le produit à prendre** sur chaque carte du check, avec un point orange s'il manque.
 - **« Autre chose de fait ? »** sur Aujourd'hui : une tâche faite hors du check, par qui, quel jour. Dans les pièces, ✓ = moi, et le bandeau propose « C'était Laeti ? ».
 
+Nouveautés de la **V1.6** :
+
+- **Catalogue de produits élargi** : une soixantaine de produits rangés par famille (basiques, cuisine, salle de bain et WC, sols, linge, vitres et meubles, matériel, poêle), avec une recherche. Un produit hors catalogue se crée depuis la recherche.
+- **Produits spécialisés** (nettoyant vitrocéramique, nettoyant inox, anti-moisissure…) : dans une fiche, ils passent devant le basique seulement s'ils sont au placard. Absents, ils ne sont jamais poussés à l'achat.
+- **Poêle à granulés** : une pièce avec quatre tâches et leurs fiches (vider le creuset, cendrier et aspiration, vitre, entretien annuel par un pro), et le stock de granulés sur sa page.
+- **Interrupteur En marche / À l'arrêt** : à l'arrêt, les tâches de la pièce sortent du check et de la jauge, fraîcheur figée, puis reprennent où elles en étaient. L'entretien annuel reste actif toute l'année. Toute pièce peut être mise à l'arrêt depuis son menu « ••• ».
+
 Les nudges (rappel, merci, équilibre, repartir à zéro, mode absence) arrivent en V2 ; les rythmes adaptatifs, le lissage et les tâches saisonnières en V3.
 
-### Passer de la V1 à la V1.5
+### Mettre la base à jour (V1.5, V1.6)
 
-Une seule chose à faire : dans Supabase, *SQL Editor* → *New query*, recoller `supabase/schema.sql` et *Run*. Le script ne touche pas aux données existantes. Tant que ce n'est pas fait, l'appli fonctionne comme avant et l'onglet Placard affiche un rappel.
+Une seule chose à faire à chaque version : dans Supabase, *SQL Editor* → *New query*, recoller `supabase/schema.sql` et *Run*. Le script ne touche pas aux données existantes, rafraîchit l'API et affiche une vérification (`placard_ok`, `fiches_ok`, `poele_ok`, toutes à `true`). Tant que ce n'est pas fait, l'appli fonctionne comme avant : l'onglet Placard ou l'interrupteur du poêle affichent un rappel.
 
 ## Mise en route (une seule fois)
 
@@ -58,9 +65,10 @@ Table `menage_journal` (un événement par ligne, `details` en JSON), exportable
 | `tache_creee`, `tache_modifiee`, `tache_supprimee` | ancien et nouveau rythme ou durée, origine | Le catalogue de départ est-il juste |
 | `piece_creee`, `piece_modifiee`, `piece_supprimee`, `configuration_terminee` | nombre de tâches, ajustements, durée | Coût de la configuration |
 | `vue_fiche` | tâche, depuis le check ou une pièce | Les fiches servent-elles, pour quelles tâches |
-| `placard_configure`, `produit_etat`, `produit_cree`, `produit_modifie`, `produit_supprime` | produit, état avant et après | Rythme de consommation des produits |
+| `placard_configure`, `produit_etat`, `produit_cree`, `produit_modifie`, `produit_supprime` | produit, état avant et après, famille, origine (catalogue, recherche, libre, poêle) | Rythme de consommation, produits manquants au catalogue |
 | `ajout_courses` | produit, résultat (ajouté, déjà sur la liste, erreur), depuis | Le lien avec Panier sert-il |
 | `correction_auteur` | tâche | Le ✓ = moi est-il le bon réglage par défaut |
+| `piece_pause` | pièce, arrêt ou marche, jours d'arrêt | Saison de chauffe réelle du poêle |
 | `invitation`, `export` | type | Usages annexes |
 
 Premiers indicateurs : durée médiane du check, taux de report par tâche, jours sans check par semaine, part des ouvertures venues du rappel.
@@ -76,7 +84,7 @@ npm run build
 npm run gen:illustrations  # après avoir changé le catalogue (src/lib/catalogue.ts)
 ```
 
-En mode factice, `window.mockAutre()` simule le second téléphone (profil Laeti) et `window.mockAutre('Aspirateur')` lui fait faire une tâche ; `window.mockHorsLigne = true` coupe le réseau ; `window.mockBaseV1 = true` (avant le chargement) simule une base pas encore passée en V1.5.
+En mode factice, `window.mockAutre()` simule le second téléphone (profil Laeti) et `window.mockAutre('Aspirateur')` lui fait faire une tâche ; `window.mockHorsLigne = true` coupe le réseau ; `window.mockBaseV1 = true` ou `window.mockBaseV15 = true` (avant le chargement) simule une base pas encore passée en V1.5 ou en V1.6.
 
 Chaque push sur `main` est testé, construit et déployé sur GitHub Pages par `.github/workflows/deploy.yml`.
 
@@ -86,7 +94,7 @@ Chaque push sur `main` est testé, construit et déployé sur GitHub Pages par `
 - `src/lib/useMaison.ts` : données, temps réel, cache, file d'attente hors ligne, journal.
 - `src/lib/catalogue.ts` : pièces et tâches proposées, rythmes, durées.
 - `src/lib/fiches.ts` : fiches « comment faire » et choix du produit selon le placard (testés).
-- `src/lib/produits.ts` : produits ménagers du catalogue (indispensables et utiles en plus).
+- `src/lib/produits.ts` : produits ménagers du catalogue, par famille (indispensables, courants, spécialisés).
 - `src/components/` : écrans (Arrivée, Configuration, Aujourd'hui, Pièces, Placard, Réglages, fiche de tâche).
 - `supabase/schema.sql` : tables, règles d'accès, fonctions créer / rejoindre un foyer.
 

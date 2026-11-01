@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { libelleDuree, rythmeCourt } from '../lib/catalogue.ts';
 import { aujourdhui, ilYa } from '../lib/dates.ts';
-import { besoinsDe, ficheDe } from '../lib/fiches.ts';
+import { besoinsVisibles, ficheDe } from '../lib/fiches.ts';
 import { estFaiteLe } from '../lib/fraicheur.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Tache } from '../lib/types.ts';
@@ -30,7 +30,7 @@ export function FicheTache({
 }) {
   const jour = aujourdhui();
   const fiche = ficheDe(tache);
-  const besoins = besoinsDe(tache);
+  const besoins = besoinsVisibles(tache, maison.produits);
   const piece = maison.pieces.find((p) => p.id === tache.piece_id);
   const qui = maison.profils.find((p) => p.id === tache.derniere_par)?.prenom;
   const faite = estFaiteLe(tache, jour);

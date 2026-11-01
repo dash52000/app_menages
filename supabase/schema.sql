@@ -1,9 +1,9 @@
 -- =====================================================================
--- Coup de frais (appli ménage) — schéma Supabase V1.5
+-- Coup de frais (appli ménage) — schéma Supabase V1.6
 --
 -- Installation : Supabase > SQL Editor > New query, coller ce fichier, « Run ».
 -- Le script peut être relancé sans casse (il ne supprime rien) : pour passer
--- de la V1 à la V1.5, il suffit de le coller et de le lancer à nouveau.
+-- d'une version à la suivante, il suffit de le coller et de le lancer à nouveau.
 --
 -- Toutes les tables sont préfixées menage_ : elles cohabitent sans risque
 -- avec celles de Panier dans le même projet Supabase.
@@ -68,6 +68,9 @@ create table if not exists menage_taches (
   reserve_le      date,
   cree_le         timestamptz not null default now()
 );
+
+-- V1.6 : une pièce peut être mise à l'arrêt (poêle hors saison).
+alter table menage_pieces add column if not exists en_pause_depuis date;
 
 create index if not exists menage_taches_foyer on menage_taches (foyer_id);
 create index if not exists menage_taches_piece on menage_taches (piece_id);
@@ -303,10 +306,14 @@ to authenticated;
 -- ---------- Fait voir tout de suite les nouvelles tables et colonnes à l'API ----------------
 notify pgrst, 'reload schema';
 
--- ---------- Vérification : les deux colonnes doivent afficher « true » -------------------------
+-- ---------- Vérification : les trois colonnes doivent afficher « true » ------------------------
 select
   to_regclass('public.menage_produits') is not null as placard_ok,
   exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'menage_taches' and column_name = 'fiche'
-  ) as fiches_ok;
+  ) as fiches_ok,
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'menage_pieces' and column_name = 'en_pause_depuis'
+  ) as poele_ok;

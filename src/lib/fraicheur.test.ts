@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ajouterJours, ecart, ilYa, jourRelatif } from './dates.ts';
 import {
   candidatesCheck,
+  dateApresReprise,
+  figeeDepuis,
+  fraicheurAffichee,
+  tachesActives,
   derniereFoisInitiale,
   estDue,
   fraicheur,
@@ -122,5 +126,33 @@ describe('check', () => {
     const j = jauge(taches, J)!;
     expect(j).toBeGreaterThan(55);
     expect(j).toBeLessThan(90);
+  });
+});
+
+describe('pièce à l’arrêt (poêle hors saison)', () => {
+  const pieces = [
+    { id: 'poele', foyer_id: 'f', nom: 'Poêle à granulés', icone: 'fire', ordre: 0, en_pause_depuis: '2026-04-15' },
+    { id: 'cuisine', foyer_id: 'f', nom: 'Cuisine', icone: 'cooking', ordre: 1, en_pause_depuis: null },
+  ];
+  const creuset = tache({ id: 'creuset', nom: 'Vider le creuset', piece_id: 'poele', rythme_jours: 4, derniere_fois: '2026-04-13' });
+  const entretien = tache({ id: 'pro', nom: 'Entretien annuel par un pro', piece_id: 'poele', rythme_jours: 365, derniere_fois: '2025-11-01' });
+  const evier = tache({ id: 'evier', nom: 'Nettoyer l’évier', piece_id: 'cuisine', derniere_fois: '2026-10-20' });
+
+  it('sort ses tâches du check et de la jauge, sauf l’entretien annuel', () => {
+    expect(tachesActives([creuset, entretien, evier], pieces).map((t) => t.id)).toEqual(['pro', 'evier']);
+    expect(figeeDepuis(creuset, pieces)).toBe('2026-04-15');
+    expect(figeeDepuis(entretien, pieces)).toBeNull();
+  });
+
+  it('reprend où elle en était à la remise en marche', () => {
+    // Faite 2 jours avant l'arrêt du 15 avril, remise en marche le 31 octobre : « faite il y a 2 jours ».
+    expect(dateApresReprise('2026-04-13', '2026-04-15', J)).toBe('2026-10-29');
+    // Faite pendant l'arrêt : repart fraîche.
+    expect(dateApresReprise('2026-06-01', '2026-04-15', J)).toBe(J);
+  });
+
+  it('fige la fraîcheur au jour de l’arrêt', () => {
+    expect(fraicheurAffichee(creuset, J, pieces)).toBeCloseTo(0.5); // 2 jours sur 4, comme le 15 avril
+    expect(fraicheurAffichee(tache({ id: 'x', piece_id: 'poele', derniere_fois: '2026-05-01' }), J, pieces)).toBe(1);
   });
 });

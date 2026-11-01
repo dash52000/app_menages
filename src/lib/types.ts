@@ -20,6 +20,8 @@ export interface Piece {
   nom: string;
   icone: string;
   ordre: number;
+  /** V1.6 : à l'arrêt depuis ce jour (poêle hors saison), sinon null. */
+  en_pause_depuis?: Jour | null;
 }
 
 export interface Tache {

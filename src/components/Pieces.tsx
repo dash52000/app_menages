@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BANQUE_ICONES, CATALOGUE, rythmeCourt } from '../lib/catalogue.ts';
-import { aujourdhui, ilYa } from '../lib/dates.ts';
-import { estDue, estFaiteLe, fraicheur, jauge, urgence } from '../lib/fraicheur.ts';
+import { BANQUE_ICONES, CATALOGUE, estSaisonniere, rythmeCourt } from '../lib/catalogue.ts';
+import { aujourdhui, ilYa, jourRelatif } from '../lib/dates.ts';
+import { estDue, estFaiteLe, figeeDepuis, fraicheurAffichee, jauge, tachesActives, urgence } from '../lib/fraicheur.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Piece, Tache } from '../lib/types.ts';
 import { Anneau, Barre } from './Jauge.tsx';
 import { Feuille } from './Feuille.tsx';
 import { FeuilleTache } from './FeuilleTache.tsx';
 import { FicheTache } from './FicheTache.tsx';
+import { SuiviProduit } from './Produits.tsx';
 import { Illus } from './Illus.tsx';
 import type { Message } from './Bandeau.tsx';
 
@@ -42,14 +43,18 @@ export function Pieces({
       </header>
       <div className="grille-pieces">
         {maison.pieces.map((p) => {
-          const taches = maison.taches.filter((t) => t.piece_id === p.id);
+          const toutes = maison.taches.filter((t) => t.piece_id === p.id);
+          const taches = tachesActives(toutes, maison.pieces);
           const j = jauge(taches, jour);
           const dues = taches.filter((t) => estDue(t, jour)).length;
+          const arret = Boolean(p.en_pause_depuis);
           return (
-            <button key={p.id} className="tuile-piece" onClick={() => setPieceOuverte(p.id)}>
+            <button key={p.id} className={`tuile-piece ${arret ? 'a-l-arret' : ''}`} onClick={() => setPieceOuverte(p.id)}>
               <Illus nom={p.icone} taille={52} />
               <strong>{p.nom}</strong>
-              {j === null ? (
+              {arret ? (
+                <span className="etiquette etiquette-arret">À l’arrêt</span>
+              ) : j === null ? (
                 <span className="discret petit">Aucune tâche</span>
               ) : (
                 <>
@@ -110,7 +115,18 @@ function DetailPiece({
         .sort((a, b) => urgence(b, jour) - urgence(a, jour) || a.nom.localeCompare(b.nom, 'fr')),
     [maison.taches, piece.id, jour],
   );
-  const j = jauge(taches, jour);
+  const arret = Boolean(piece.en_pause_depuis);
+  const j = arret ? null : jauge(tachesActives(taches, maison.pieces), jour);
+  const basculer = () => {
+    if (arret) {
+      maison.remettreEnMarche(piece);
+      informer({ texte: `${piece.nom} en marche : ses tâches reprennent où elles en étaient.` });
+    } else if (maison.mettreALArret(piece)) {
+      informer({ texte: `${piece.nom} à l’arrêt : ses tâches sortent du check jusqu’à la remise en marche.` });
+    } else {
+      informer({ texte: 'Recolle schema.sql dans Supabase pour activer l’interrupteur.', duree: 7000 });
+    }
+  };
   const nomProfil = (id: string | null) => maison.profils.find((p) => p.id === id)?.prenom;
 
   /** ✓ = moi ; le bandeau propose de corriger (« C'était Laeti ? ») ou d'annuler. */
@@ -150,9 +166,27 @@ function DetailPiece({
         {j !== null && <Anneau pourcent={j} taille={60} />}
       </div>
 
+      {(estSaisonniere(piece) || arret) && (
+        <button className={`interrupteur ${arret ? '' : 'marche'}`} onClick={basculer} role="switch" aria-checked={!arret}>
+          <span className="interrupteur-texte">
+            <strong>{arret ? 'À l’arrêt' : 'En marche'}</strong>
+            <span className="discret petit">
+              {arret
+                ? `Depuis ${jourRelatif(piece.en_pause_depuis!, jour)} · tâches figées, hors du check`
+                : 'Ses tâches comptent dans le check et la jauge'}
+            </span>
+          </span>
+          <span className="interrupteur-curseur" aria-hidden>
+            <span />
+          </span>
+        </button>
+      )}
+      {estSaisonniere(piece) && <SuiviProduit cle="granules" maison={maison} informer={informer} />}
+
       <ul className="liste-taches">
         {taches.map((t) => {
-          const f = fraicheur(t, jour);
+          const f = fraicheurAffichee(t, jour, maison.pieces);
+          const fige = Boolean(figeeDepuis(t, maison.pieces));
           const faite = estFaiteLe(t, jour);
           const qui = nomProfil(t.derniere_par);
           const quand = !t.derniere_fois
@@ -161,13 +195,14 @@ function DetailPiece({
               ? `${ilYa(t.derniere_fois, jour)}${qui ? ` · ${qui}` : ''}`
               : 'pas encore notée';
           return (
-            <li key={t.id} className="ligne-tache">
+            <li key={t.id} className={`ligne-tache ${fige ? 'figee' : ''}`}>
               <button className="ligne-tache-corps" onClick={() => setFicheOuverte(t.id)}>
                 <Illus nom={t.icone} taille={40} />
                 <span className="ligne-tache-texte">
                   <strong>{t.nom}</strong>
                   <span className="discret petit">
                     {quand} · {rythmeCourt(t.rythme_jours)}
+                    {arret && !fige ? ' · toute l’année' : ''}
                   </span>
                   <Barre fraicheur={f} />
                 </span>
@@ -272,6 +307,22 @@ function FeuillePiece({
         Enregistrer
       </button>
       <button
+        className="bouton-secondaire"
+        onClick={() => {
+          if (piece.en_pause_depuis) {
+            maison.remettreEnMarche(piece);
+            informer({ texte: `${piece.nom} en marche` });
+          } else if (maison.mettreALArret(piece)) {
+            informer({ texte: `${piece.nom} à l’arrêt : ses tâches sortent du check.` });
+          } else {
+            informer({ texte: 'Recolle schema.sql dans Supabase pour activer la mise à l’arrêt.', duree: 7000 });
+          }
+          onFermer();
+        }}
+      >
+        {piece.en_pause_depuis ? 'Remettre en marche' : 'Mettre à l’arrêt (hors saison, pièce inutilisée)'}
+      </button>
+      <button
         className="bouton-danger"
         onClick={() => {
           const annuler = maison.supprimerPiece(piece);
@@ -310,6 +361,10 @@ function FeuilleNouvellePiece({
   const creer = (n: string, i: string, taches: Array<{ nom: string; icone: string; rythme: number; duree: number }>, depuis: string) => {
     const nomFinal = nomLibre(n);
     const [id] = maison.creerPieces([{ nom: nomFinal, icone: i, taches }]);
+    // Un poêle à granulés : les granulés entrent au placard.
+    if (estSaisonniere({ nom: n, icone: i }) && maison.base15 && maison.produits.length && !maison.produits.some((x) => x.cle === 'granules')) {
+      maison.ajouterProduit({ cle: 'granules', nom: 'Granulés de bois', icone: 'wood' }, 'poele');
+    }
     maison.noter('piece_creee', { piece: nomFinal, nb_taches: taches.length, depuis });
     informer({ texte: taches.length ? `${nomFinal} ajoutée avec ${taches.length} tâches` : `${nomFinal} ajoutée` });
     onCreee(id);

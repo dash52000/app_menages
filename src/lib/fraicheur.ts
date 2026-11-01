@@ -1,7 +1,8 @@
 // Le cœur de l'appli : fraîcheur des tâches, jauge de la maison et choix
 // des tâches du check. Fonctions pures, testées dans fraicheur.test.ts.
 import { ajouterJours, ecart, type Jour } from './dates.ts';
-import type { Tache } from './types.ts';
+import type { Piece, Tache } from './types.ts';
+import { ficheDe } from './fiches.ts';
 
 /** Une tâche entre dans le check quand il lui reste 10 % de fraîcheur ou moins. */
 export const SEUIL_DUE = 0.1;
@@ -103,4 +104,36 @@ export function derniereFoisInitiale(index: number, rythme: number, jour: Jour):
   const k = (index * 0.6180339887 + 0.37) % 1;
   const jours = k > 0.86 ? rythme : Math.max(1, Math.round(k * 0.4 * rythme));
   return ajouterJours(jour, -jours);
+}
+
+// ---------- Pièces à l'arrêt (poêle hors saison) ----------
+
+/** Jour depuis lequel la tâche est figée (pièce à l'arrêt), sinon null. */
+export function figeeDepuis(t: Tache, pieces: Piece[]): Jour | null {
+  const p = pieces.find((x) => x.id === t.piece_id);
+  if (!p?.en_pause_depuis) return null;
+  return ficheDe(t)?.touteAnnee ? null : p.en_pause_depuis;
+}
+
+/** Les tâches qui comptent : celles des pièces à l'arrêt sortent du check et de la jauge. */
+export function tachesActives(taches: Tache[], pieces: Piece[]): Tache[] {
+  if (!pieces.some((p) => p.en_pause_depuis)) return taches;
+  return taches.filter((t) => !figeeDepuis(t, pieces));
+}
+
+/**
+ * Date de référence d'une tâche à la remise en marche : elle avance de la
+ * durée de l'arrêt, pour que la fraîcheur figée reparte telle quelle.
+ * Faite pendant l'arrêt : elle repart fraîche, au jour de la remise en marche.
+ */
+export function dateApresReprise(derniere: Jour, arretDepuis: Jour, jour: Jour): Jour {
+  const debut = derniere > arretDepuis ? derniere : arretDepuis;
+  const nouvelle = ajouterJours(derniere, Math.max(0, ecart(debut, jour)));
+  return nouvelle > jour ? jour : nouvelle;
+}
+
+/** Fraîcheur affichée : figée au jour de l'arrêt pour une pièce à l'arrêt. */
+export function fraicheurAffichee(t: Tache, jour: Jour, pieces: Piece[]): number {
+  const fige = figeeDepuis(t, pieces);
+  return fraicheur(t, fige && fige < jour ? fige : jour);
 }

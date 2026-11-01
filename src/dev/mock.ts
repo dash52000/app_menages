@@ -41,7 +41,10 @@ class Requete {
 
   constructor(private table: string) {}
 
-  select() {
+  private colonnes = '*';
+
+  select(colonnes = '*') {
+    this.colonnes = colonnes;
     return this;
   }
   insert(v: any) {
@@ -99,6 +102,15 @@ class Requete {
         return { data: null, error: { code: 'PGRST204', message: "Could not find the 'fiche' column of 'menage_taches'" } };
       }
     }
+    if ((w.mockBaseV1 || w.mockBaseV15) && this.table === 'menage_pieces' && (this.action === 'insert' || this.action === 'update')) {
+      const lignes = Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs];
+      if (lignes.some((l: Ligne) => 'en_pause_depuis' in l)) {
+        return { data: null, error: { code: 'PGRST204', message: "Could not find the 'en_pause_depuis' column of 'menage_pieces'" } };
+      }
+    }
+    if ((w.mockBaseV1 || w.mockBaseV15) && this.table === 'menage_pieces' && this.action === 'select' && this.colonnes.includes('en_pause_depuis')) {
+      return { data: null, error: { code: '42703', message: 'column menage_pieces.en_pause_depuis does not exist' } };
+    }
     const t = tables[this.table];
     if (this.action === 'insert') {
       const lignes = (Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs]).map((v: Ligne) => ({
@@ -111,6 +123,9 @@ class Requete {
       if (lignes.some(doublon)) return { data: null, error: { code: '23505', message: 'doublon' } };
       if (this.table === 'produits') lignes.forEach((l: Ligne) => Object.assign(l, { masque: false, ...l }));
       if (this.table === 'articles_liste') lignes.forEach((l: Ligne) => Object.assign(l, { coche: false, ...l }));
+      if (this.table === 'menage_pieces' && !w.mockBaseV1 && !w.mockBaseV15) {
+        lignes.forEach((l: Ligne) => Object.assign(l, { en_pause_depuis: null, ...l }));
+      }
       t.push(...lignes);
       lignes.forEach((l: Ligne) => emettre(this.table, 'INSERT', { ...l }, null));
       return { data: this.unique ? lignes[0] : lignes, error: null };

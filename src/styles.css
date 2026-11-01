@@ -1564,3 +1564,97 @@ button.carte-haut:active {
 .bouton-caddie:active {
   transform: scale(0.94);
 }
+
+/* =====================================================================
+   V1.6 : poêle (interrupteur, granulés), catalogue élargi
+   ===================================================================== */
+
+.interrupteur {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 14px 16px;
+}
+
+.interrupteur-texte {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.interrupteur-curseur {
+  flex: none;
+  width: 56px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--piste);
+  position: relative;
+  transition: background 160ms ease;
+}
+
+.interrupteur-curseur > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease;
+}
+
+.interrupteur.marche .interrupteur-curseur {
+  background: var(--lagon);
+}
+
+.interrupteur.marche .interrupteur-curseur > span {
+  transform: translateX(24px);
+}
+
+.suivi-produit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 10px 12px 10px 14px;
+}
+
+.suivi-produit > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.suivi-produit.ajout {
+  box-shadow: inset 0 0 0 2px var(--trait);
+  background: transparent;
+}
+
+.tuile-piece.a-l-arret > .illus {
+  filter: grayscale(0.7);
+  opacity: 0.6;
+}
+
+.etiquette-arret {
+  background: var(--piste);
+  color: var(--encre-douce);
+}
+
+.ligne-tache.figee .ligne-tache-corps {
+  opacity: 0.55;
+}
+
+.creer-produit {
+  box-shadow: inset 0 0 0 2px var(--lagon);
+}

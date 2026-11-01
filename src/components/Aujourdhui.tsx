@@ -9,9 +9,10 @@ import {
   estReserveeLe,
   jauge as calculerJauge,
   selectionCheck,
+  tachesActives,
 } from '../lib/fraicheur.ts';
 import { libelleDuree } from '../lib/catalogue.ts';
-import { besoinsDe } from '../lib/fiches.ts';
+import { besoinsVisibles } from '../lib/fiches.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Action, Profil, Tache } from '../lib/types.ts';
 import { Anneau, phraseJauge } from './Jauge.tsx';
@@ -68,6 +69,8 @@ export function Aujourdhui({
 }) {
   const jour = aujourdhui();
   const { taches, pieces, profils, autres, moi, foyer } = maison;
+  // Les tâches d'une pièce à l'arrêt (poêle hors saison) ne comptent pas.
+  const actives = useMemo(() => tachesActives(taches, pieces), [taches, pieces]);
   const [session, setSession] = useState<Session | null>(null);
   const [choixJour, setChoixJour] = useState<string | null>(null);
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
@@ -83,8 +86,8 @@ export function Aujourdhui({
 
   // Le check est figé à son ouverture : les cartes ne sautent pas pendant qu'on coche.
   useEffect(() => {
-    if (pret && (!session || session.jour !== jour)) setSession(nouvelleSession(taches, jour));
-  }, [pret, session, jour, taches]);
+    if (pret && (!session || session.jour !== jour)) setSession(nouvelleSession(actives, jour));
+  }, [pret, session, jour, actives]);
 
   const cartes = useMemo(
     () => (session ? session.ids.map((id) => taches.find((t) => t.id === id)).filter((t): t is Tache => Boolean(t)) : []),
@@ -105,8 +108,8 @@ export function Aujourdhui({
   const nbTraitees = cartes.filter(traitee).length;
   const complet = cartes.length > 0 && nbTraitees === cartes.length;
   const reste = useMemo(
-    () => (session ? candidatesCheck(taches, jour).filter((t) => !session.vus.includes(t.id)).length : 0),
-    [session, taches, jour],
+    () => (session ? candidatesCheck(actives, jour).filter((t) => !session.vus.includes(t.id)).length : 0),
+    [session, actives, jour],
   );
 
   const terminer = useCallback(
@@ -162,7 +165,7 @@ export function Aujourdhui({
         const absent = Date.now() - cache.current.depuis;
         cache.current = null;
         if (!s) return;
-        if (absent > REPRISE_MAX_MS) setSession(nouvelleSession(maison.taches, aujourdhui()));
+        if (absent > REPRISE_MAX_MS) setSession(nouvelleSession(tachesActives(maison.taches, maison.pieces), aujourdhui()));
         else if (!s.termine) setSession({ ...s, debut: Date.now(), journalise: false, reprise: true });
       }
     };
@@ -202,7 +205,7 @@ export function Aujourdhui({
   };
 
   const continuer = () => {
-    setSession(nouvelleSession(taches, jour, session?.vus ?? []));
+    setSession(nouvelleSession(actives, jour, session?.vus ?? []));
     maison.noter('check_suite', { reste });
   };
 
@@ -211,7 +214,7 @@ export function Aujourdhui({
     return Array.from({ length: n + 1 }, (_, i) => ajouterJours(jour, -i));
   }, [jour, joursCouverts]);
 
-  const pourcent = calculerJauge(taches, jour);
+  const pourcent = calculerJauge(actives, jour);
 
   if (!pret || !session) {
     return (
@@ -360,7 +363,9 @@ export function Aujourdhui({
                       <span className="discret">
                         {nomPiece(t)} · {libelleDuree(t.duree_min)}
                       </span>
-                      {besoinsDe(t).length > 0 && <LigneProduit options={besoinsDe(t)[0]} maison={maison} />}
+                      {besoinsVisibles(t, maison.produits).length > 0 && (
+                        <LigneProduit options={besoinsVisibles(t, maison.produits)[0]} maison={maison} />
+                      )}
                       {prisePar && (
                         <span className="etiquette">{prisePar === moi ? 'Pour toi aujourd’hui' : `${nomProfil(prisePar)} la prend`}</span>
                       )}

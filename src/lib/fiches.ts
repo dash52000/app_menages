@@ -1,9 +1,12 @@
-// Fiches « comment faire » des tâches du catalogue : étapes, produits
-// (le premier de chaque besoin est l'idéal, les suivants le remplacent),
+// Fiches « comment faire » des tâches du catalogue : étapes, produits,
 // matériel, astuce et mises en garde.
+// Produits : chaque besoin liste des options. Un produit « spécialisé » (voir
+// produits.ts) passe devant s'il est au placard ; sinon le premier basique est
+// l'idéal et les suivants le remplacent. Un besoin fait seulement de produits
+// spécialisés n'apparaît que si l'un d'eux est au placard.
 // Clé : le nom de la tâche normalisé (« Laver le sol » sert dans toutes les pièces).
 import { normaliser } from './normalise.ts';
-import type { EtatProduit } from './produits.ts';
+import { estSpecialise, type EtatProduit } from './produits.ts';
 
 export interface Fiche {
   etapes: string[];
@@ -12,6 +15,8 @@ export interface Fiche {
   materiel?: string[];
   astuce?: string;
   attention?: string[];
+  /** Reste active quand sa pièce est à l'arrêt (ex. l'entretien annuel du poêle). */
+  touteAnnee?: boolean;
 }
 
 const JAVEL_ACIDE = 'Ne jamais mélanger l’eau de Javel avec du vinaigre ou un détartrant : le mélange dégage un gaz toxique.';
@@ -27,6 +32,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     ],
   },
   'Sortir le tri': {
+    besoins: [['sacs-tri']],
     etapes: [
       'Vider bouteilles, pots et boîtes : pas besoin de les laver.',
       'Aplatir les cartons et les bouteilles en plastique.',
@@ -35,7 +41,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     astuce: 'Les consignes changent d’une commune à l’autre : en cas de doute, elles sont sur le bac.',
   },
   Vitres: {
-    besoins: [['vinaigre', 'nettoyant-vitres', 'liquide-vaisselle'], ['microfibres', 'essuie-tout']],
+    besoins: [['nettoyant-vitres', 'alcool-menager', 'vinaigre', 'liquide-vaisselle'], ['microfibres', 'essuie-tout'], ['raclette']],
     materiel: ['Raclette (idéal)', 'Seau'],
     etapes: [
       'Dépoussiérer les cadres et le rebord avec un chiffon humide.',
@@ -46,7 +52,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     astuce: 'Évite le plein soleil : l’eau sèche trop vite et laisse des traces.',
   },
   'Lancer une lessive': {
-    besoins: [['lessive']],
+    besoins: [['lessive'], ['detachant'], ['lingettes-couleur']],
     etapes: [
       'Trier : blancs, couleurs, foncés, et ce qui se lave à 60 °C (draps, serviettes).',
       'Vider les poches.',
@@ -56,7 +62,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     ],
   },
   'Interrupteurs et poignées': {
-    besoins: [['multi-surfaces', 'vinaigre', 'liquide-vaisselle'], ['microfibres']],
+    besoins: [['desinfectant', 'multi-surfaces', 'vinaigre', 'liquide-vaisselle'], ['microfibres']],
     etapes: [
       'Vaporiser le produit sur le chiffon, jamais directement sur l’interrupteur.',
       'Essuyer interrupteurs, poignées de portes et de placards, télécommandes.',
@@ -87,7 +93,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
 
   // ---------- Cuisine ----------
   'Vider le lave-vaisselle': {
-    besoins: [['pastilles-lv']],
+    besoins: [['pastilles-lv'], ['sel-lv'], ['liquide-rincage'], ['nettoyant-lv']],
     etapes: [
       'Commencer par le panier du bas : l’eau restée sur les tasses du haut ne coulera pas sur la vaisselle sèche.',
       'Puis le panier du haut et les couverts.',
@@ -96,7 +102,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     astuce: 'Les voyants sel et liquide de rinçage indiquent quand en remettre.',
   },
   'Nettoyer le plan de travail': {
-    besoins: [['multi-surfaces', 'liquide-vaisselle'], ['eponges'], ['microfibres']],
+    besoins: [['pierre-argile', 'multi-surfaces', 'liquide-vaisselle'], ['eponges'], ['microfibres']],
     etapes: [
       'Ranger ce qui traîne et faire tomber les miettes.',
       'Laver à l’éponge avec le produit, en insistant sur les taches grasses.',
@@ -108,7 +114,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     ],
   },
   'Nettoyer l’évier': {
-    besoins: [['bicarbonate', 'creme-recurer'], ['vinaigre'], ['eponges']],
+    besoins: [['nettoyant-inox', 'pierre-argile', 'bicarbonate', 'creme-recurer'], ['vinaigre'], ['eponges']],
     etapes: [
       'Rincer l’évier et vider la bonde.',
       'Saupoudrer du bicarbonate et frotter avec le côté doux de l’éponge.',
@@ -118,7 +124,12 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Évier en pierre ou en résine : pas de vinaigre, une crème douce à la place.'],
   },
   'Nettoyer les plaques': {
-    besoins: [['liquide-vaisselle', 'multi-surfaces'], ['creme-recurer', 'bicarbonate'], ['microfibres']],
+    besoins: [
+      ['nettoyant-vitro', 'degraissant', 'liquide-vaisselle', 'multi-surfaces'],
+      ['grattoir-vitro'],
+      ['pierre-argile', 'creme-recurer', 'bicarbonate'],
+      ['microfibres'],
+    ],
     materiel: ['Grattoir pour vitrocéramique (si c’est brûlé)'],
     etapes: [
       'Attendre que les plaques soient froides.',
@@ -130,7 +141,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Pas de côté vert grattant sur le verre : ça raye.'],
   },
   'Laver le sol': {
-    besoins: [['savon-noir', 'multi-surfaces']],
+    besoins: [['nettoyant-parquet', 'nettoyant-sols', 'savon-noir', 'multi-surfaces'], ['serpillere']],
     materiel: ['Seau', 'Serpillière ou balai à franges'],
     etapes: [
       'Passer l’aspirateur ou le balai d’abord.',
@@ -171,7 +182,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Débrancher avant de rincer, et ne jamais mouiller le socle électrique.'],
   },
   'Nettoyer le four': {
-    besoins: [['bicarbonate', 'nettoyant-four'], ['vinaigre'], ['gants']],
+    besoins: [['nettoyant-four', 'bicarbonate'], ['vinaigre'], ['gants']],
     etapes: [
       'Four froid : sortir les grilles et la lèchefrite, les faire tremper dans l’eau chaude savonneuse.',
       'Mélanger du bicarbonate avec un peu d’eau pour faire une pâte, l’étaler sur les parois sales (pas sur la résistance).',
@@ -182,7 +193,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Nettoyant four du commerce : gants, fenêtre ouverte, jamais sur un four chaud ni à pyrolyse.'],
   },
   'Hotte et filtre': {
-    besoins: [['liquide-vaisselle', 'degraissant', 'cristaux-soude'], ['eponges']],
+    besoins: [['degraissant', 'nettoyant-inox', 'liquide-vaisselle', 'cristaux-soude'], ['filtre-hotte'], ['eponges']],
     etapes: [
       'Retirer les filtres métalliques.',
       'Les faire tremper 15 à 30 minutes dans de l’eau très chaude avec du liquide vaisselle, puis brosser.',
@@ -210,7 +221,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
 
   // ---------- Salle de bain ----------
   'Lavabo et miroir': {
-    besoins: [['multi-surfaces', 'vinaigre'], ['microfibres']],
+    besoins: [['nettoyant-sdb', 'multi-surfaces', 'vinaigre'], ['nettoyant-vitres'], ['microfibres']],
     etapes: [
       'Retirer cheveux et dépôts de la bonde.',
       'Vaporiser le lavabo et le robinet, frotter à l’éponge, rincer.',
@@ -219,7 +230,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     ],
   },
   'Douche ou baignoire': {
-    besoins: [['vinaigre', 'anticalcaire'], ['eponges']],
+    besoins: [['anticalcaire', 'nettoyant-sdb', 'vinaigre'], ['anti-moisissure'], ['eponges'], ['raclette']],
     materiel: ['Raclette', 'Vieille brosse à dents pour les joints'],
     etapes: [
       'Rincer à l’eau chaude.',
@@ -258,7 +269,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
 
   // ---------- WC ----------
   'Nettoyer les toilettes': {
-    besoins: [['gel-wc', 'acide-citrique', 'vinaigre'], ['multi-surfaces'], ['gants']],
+    besoins: [['gel-wc', 'acide-citrique', 'vinaigre'], ['desinfectant', 'multi-surfaces'], ['gants'], ['brosse-wc']],
     materiel: ['Brosse WC', 'Chiffon réservé aux toilettes'],
     etapes: [
       'Mettre le gel sous les rebords et laisser agir au moins 10 minutes.',
@@ -276,6 +287,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
 
   // ---------- Salon, chambre, entrée, bureau ----------
   Aspirateur: {
+    besoins: [['sacs-aspirateur'], ['filtre-aspirateur']],
     materiel: ['Aspirateur', 'Embout fin pour les coins'],
     etapes: [
       'Ramasser ce qui traîne au sol (câbles, chaussettes, petits objets).',
@@ -286,7 +298,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     astuce: 'Faire la poussière avant l’aspirateur : elle tombe au sol.',
   },
   Poussière: {
-    besoins: [['microfibres']],
+    besoins: [['microfibres'], ['depoussierant']],
     etapes: [
       'Commencer en haut (étagères, dessus des meubles) et descendre.',
       'Microfibre sèche ou à peine humide : elle retient la poussière au lieu de la disperser.',
@@ -304,7 +316,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     ],
   },
   'Aspirer le canapé': {
-    besoins: [['bicarbonate']],
+    besoins: [['bicarbonate'], ['nettoyant-cuir']],
     materiel: ['Aspirateur avec embout brosse'],
     etapes: [
       'Retirer les coussins et récupérer ce qui est tombé dessous.',
@@ -361,7 +373,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     etapes: ['Jeter les papiers inutiles, classer ceux à garder.', 'Remettre stylos et câbles à leur place.', 'Ne laisser sur le bureau que ce qui sert tous les jours.'],
   },
   'Poussière et écran': {
-    besoins: [['microfibres']],
+    besoins: [['microfibres'], ['nettoyant-ecran']],
     etapes: [
       'Éteindre l’écran : les traces se voient mieux.',
       'L’essuyer avec une microfibre sèche, sans appuyer.',
@@ -385,7 +397,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     astuce: 'L’idéal : après chaque séchage. Un filtre propre sèche plus vite et consomme moins.',
   },
   'Nettoyer le lave-linge': {
-    besoins: [['percarbonate', 'cristaux-soude'], ['vinaigre'], ['gants']],
+    besoins: [['nettoyant-lave-linge', 'percarbonate', 'cristaux-soude'], ['vinaigre'], ['gants']],
     materiel: ['Serviette', 'Récipient plat'],
     etapes: [
       'Bac à lessive : le retirer, le laver à l’eau chaude, brosser les dépôts.',
@@ -397,6 +409,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Percarbonate et cristaux de soude : avec des gants, et jamais avec de la Javel dans le même lavage.'],
   },
   Balayer: {
+    besoins: [['balai'], ['pelle-balayette']],
     materiel: ['Balai', 'Pelle'],
     etapes: ['Ranger ce qui traîne.', 'Balayer du fond vers la sortie, coins compris.', 'Ramasser et jeter, y compris les feuilles dans les évacuations.'],
   },
@@ -409,6 +422,59 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
       'Rincer à l’eau claire.',
       'Laisser sécher avant de remettre les coussins.',
     ],
+  },
+
+  // ---------- Poêle à granulés ----------
+  'Vider le creuset': {
+    besoins: [['gants-chaleur', 'gants']],
+    materiel: ['Aspirateur à cendres ou petite pelle', 'Seau métallique'],
+    etapes: [
+      'Poêle éteint et froid : attendre la fin du cycle d’arrêt, puis au moins une heure.',
+      'Sortir le creuset (le pot où brûlent les granulés).',
+      'Vider les cendres et les croûtes dans le seau métallique, puis gratter le fond.',
+      'Vérifier que les petits trous ne sont pas bouchés : ce sont eux qui amènent l’air.',
+      'Remettre le creuset bien à plat, dans le bon sens.',
+    ],
+    astuce: 'Beaucoup de croûtes dures : souvent des granulés de moins bonne qualité. Les certifiés ENplus A1 ou DINplus en laissent moins.',
+    attention: ['Les cendres restent chaudes plusieurs jours : seau métallique fermé, dehors, jamais dans la poubelle.'],
+  },
+  'Cendrier et aspiration': {
+    besoins: [['gants-chaleur', 'gants']],
+    materiel: ['Aspirateur à cendres (pas l’aspirateur de la maison)', 'Seau métallique'],
+    etapes: [
+      'Poêle éteint et froid.',
+      'S’il y a des tirettes ou des racleurs d’échangeur : les actionner plusieurs fois, pour faire tomber la suie.',
+      'Vider le cendrier dans le seau métallique.',
+      'Aspirer le foyer, le logement du creuset et le fond du cendrier avec l’aspirateur à cendres.',
+      'Remettre le cendrier et le creuset en place, porte bien fermée.',
+    ],
+    astuce: 'Un poêle propre consomme moins de granulés et tombe moins en panne d’allumage.',
+    attention: [
+      'Jamais l’aspirateur ménager : la cendre fine le détruit et une braise peut y mettre le feu.',
+      'Les cendres restent chaudes plusieurs jours : seau métallique fermé, dehors.',
+    ],
+  },
+  'Nettoyer la vitre': {
+    besoins: [['nettoyant-vitre-poele', 'essuie-tout'], ['microfibres']],
+    etapes: [
+      'Poêle éteint, vitre froide.',
+      'Avec le nettoyant vitre de poêle : vaporiser, laisser agir une minute, essuyer.',
+      'Sans produit : du papier humide trempé dans un peu de cendre froide, frotté en cercles. La cendre polit sans rayer.',
+      'Essuyer avec un papier sec ou une microfibre.',
+    ],
+    attention: ['Jamais sur une vitre chaude, et pas d’éponge grattante : la vitre vitrocéramique se raye.'],
+  },
+  'Entretien annuel par un pro': {
+    touteAnnee: true,
+    materiel: ['Les attestations de l’an dernier'],
+    etapes: [
+      'Prendre rendez-vous avec un professionnel qualifié, idéalement hors saison de chauffe (les agendas sont pleins à l’automne).',
+      'Entretien du poêle : nettoyage complet, joints, ventilateurs, sondes, réglages.',
+      'Ramonage du conduit, mécanique (pas seulement une bûche ou un produit).',
+      'Garder les attestations remises après chaque passage : l’assurance peut les demander après un sinistre.',
+    ],
+    astuce: 'Depuis octobre 2023, l’entretien du poêle est obligatoire chaque année, et le ramonage au moins une fois par an. Au-delà de 2,5 tonnes de granulés par an, deux ramonages sont recommandés, dont un pendant la saison de chauffe.',
+    attention: ['En location, l’entretien et le ramonage sont en général à la charge de l’occupant, sauf clause contraire du bail.'],
   },
 };
 
@@ -451,20 +517,40 @@ export function trouverProduit<T extends ProduitPlacard>(ref: string, placard: T
   return placard.find((x) => x.cle === ref) ?? placard.find((x) => x.id === ref);
 }
 
-export function resoudreBesoin(options: string[], placard: ProduitPlacard[]): Besoin {
-  const ideal = options[0];
-  const pi = trouverProduit(ideal, placard);
+/**
+ * Ce qu'on prend pour un besoin :
+ * - l'idéal est le premier produit spécialisé présent au placard, sinon le
+ *   premier basique (un spécialisé absent n'est jamais affiché comme idéal) ;
+ * - ce qu'on a sous la main : le premier produit au placard qui n'est pas fini,
+ *   spécialisés présents d'abord, puis les basiques dans l'ordre.
+ * Renvoie null quand le besoin n'est fait que de spécialisés absents du placard.
+ */
+export function resoudreBesoin(options: string[], placard: ProduitPlacard[]): Besoin | null {
+  const present = (o: string) => trouverProduit(o, placard);
+  const specialisesPresents = options.filter((o) => estSpecialise(o) && present(o));
+  const basiques = options.filter((o) => !estSpecialise(o));
+  const ideal = specialisesPresents[0] ?? basiques[0];
+  if (!ideal) return null;
   let choisi: string | null = null;
   let etatChoisi: EtatProduit | null = null;
-  for (const o of options) {
-    const x = trouverProduit(o, placard);
+  for (const o of [...specialisesPresents, ...basiques]) {
+    const x = present(o);
     if (x && x.etat !== 'vide') {
       choisi = o;
       etatChoisi = x.etat;
       break;
     }
   }
+  const pi = present(ideal);
   return { ideal, choisi, etatIdeal: pi ? pi.etat : 'absent', etatChoisi };
+}
+
+/** Les besoins à afficher pour une tâche (ceux qui ne sont pas masqués). */
+export function besoinsVisibles(
+  t: { nom: string; fiche?: string | null; produits?: string[] | null },
+  placard: ProduitPlacard[],
+): string[][] {
+  return besoinsDe(t).filter((o) => resoudreBesoin(o, placard) !== null);
 }
 
 /** Les besoins d'une tâche : ses produits choisis à la main, sinon ceux de sa fiche. */
