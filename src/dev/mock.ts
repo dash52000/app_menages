@@ -13,6 +13,10 @@ const tables: Record<string, Ligne[]> = {
   menage_taches: [],
   menage_historique: [],
   menage_journal: [],
+  menage_produits: [],
+  // Tables de Panier (liste de courses), pour tester « Aux courses ».
+  produits: [],
+  articles_liste: [],
 };
 
 let session: { user: { id: string } } | null = null;
@@ -33,6 +37,7 @@ class Requete {
   private unique: 'single' | 'maybe' | null = null;
   private tri: { col: string; asc: boolean } | null = null;
   private plage: [number, number] | null = null;
+  private max: number | null = null;
 
   constructor(private table: string) {}
 
@@ -65,6 +70,10 @@ class Requete {
     this.plage = [a, b];
     return this;
   }
+  limit(n: number) {
+    this.max = n;
+    return this;
+  }
   maybeSingle() {
     this.unique = 'maybe';
     return this;
@@ -79,6 +88,17 @@ class Requete {
   }
 
   private executer(): { data: any; error: any } {
+    const w = window as any;
+    // window.mockBaseV1 = true : base pas encore mise à jour (V1).
+    if (w.mockBaseV1 && this.table === 'menage_produits') {
+      return { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.menage_produits' in the schema cache" } };
+    }
+    if (w.mockBaseV1 && this.table === 'menage_taches' && (this.action === 'insert' || this.action === 'update')) {
+      const lignes = Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs];
+      if (lignes.some((l: Ligne) => 'fiche' in l || 'note' in l || 'produits' in l)) {
+        return { data: null, error: { code: 'PGRST204', message: "Could not find the 'fiche' column of 'menage_taches'" } };
+      }
+    }
     const t = tables[this.table];
     if (this.action === 'insert') {
       const lignes = (Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs]).map((v: Ligne) => ({
@@ -86,10 +106,14 @@ class Requete {
         cree_le: new Date().toISOString(),
         ...structuredClone(v),
       }));
-      if (lignes.some((l: Ligne) => t.some((x) => x.id === l.id))) return { data: null, error: { code: '23505', message: 'doublon' } };
+      const doublon = (l: Ligne) =>
+        t.some((x) => x.id === l.id || (this.table === 'produits' && x.nom_normalise === l.nom_normalise));
+      if (lignes.some(doublon)) return { data: null, error: { code: '23505', message: 'doublon' } };
+      if (this.table === 'produits') lignes.forEach((l: Ligne) => Object.assign(l, { masque: false, ...l }));
+      if (this.table === 'articles_liste') lignes.forEach((l: Ligne) => Object.assign(l, { coche: false, ...l }));
       t.push(...lignes);
       lignes.forEach((l: Ligne) => emettre(this.table, 'INSERT', { ...l }, null));
-      return { data: lignes, error: null };
+      return { data: this.unique ? lignes[0] : lignes, error: null };
     }
     if (this.action === 'update') {
       for (const l of t.filter((x) => this.correspond(x))) {
@@ -116,6 +140,7 @@ class Requete {
       r.sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (asc ? 1 : -1));
     }
     if (this.plage) r = r.slice(this.plage[0], this.plage[1] + 1);
+    if (this.max !== null) r = r.slice(0, this.max);
     if (this.unique) {
       if (r[0]) return { data: r[0], error: null };
       return this.unique === 'maybe' ? { data: null, error: null } : { data: null, error: { code: 'PGRST116' } };

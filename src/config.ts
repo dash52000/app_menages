@@ -12,4 +12,4 @@ export const SUPABASE_ANON_KEY: string =
 /** Nom provisoire de l'appli : à changer ici, dans index.html et vite.config.ts. */
 export const NOM_APPLI = 'Coup de frais';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.5.0';

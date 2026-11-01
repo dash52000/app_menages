@@ -97,10 +97,10 @@ export function selectionCheck(
  * Date de « dernière fois » estimée pour une tâche créée à la configuration.
  * Les échéances sont étalées pour que chaque jour reste léger, avec environ
  * une tâche sur sept due tout de suite : le premier check n'est jamais vide,
- * et la maison démarre autour de 70 %.
+ * et la maison démarre autour de 65 %. Jamais « faite aujourd'hui » : elle reste cochable.
  */
 export function derniereFoisInitiale(index: number, rythme: number, jour: Jour): Jour {
   const k = (index * 0.6180339887 + 0.37) % 1;
-  const jours = k > 0.86 ? rythme : Math.round(k * 0.4 * rythme);
+  const jours = k > 0.86 ? rythme : Math.max(1, Math.round(k * 0.4 * rythme));
   return ajouterJours(jour, -jours);
 }

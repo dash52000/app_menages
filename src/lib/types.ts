@@ -1,4 +1,5 @@
 import type { Jour } from './dates.ts';
+import type { EtatProduit } from './produits.ts';
 
 export interface Foyer {
   id: string;
@@ -35,6 +36,23 @@ export interface Tache {
   reporte_jusqu_au: Jour | null;
   reserve_par: string | null;
   reserve_le: Jour | null;
+  /** V1.5 (absents tant que la base n'est pas à jour). */
+  fiche?: string | null;
+  note?: string | null;
+  produits?: string[] | null;
+}
+
+export interface Produit {
+  id: string;
+  foyer_id: string;
+  cle: string | null;
+  nom: string;
+  icone: string;
+  etat: EtatProduit;
+  indispensable: boolean;
+  courses_le: string | null;
+  maj_par: string | null;
+  maj_le: string;
 }
 
 export interface Membre {

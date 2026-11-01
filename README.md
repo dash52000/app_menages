@@ -2,7 +2,7 @@
 
 Le suivi du ménage à deux, pour Damien et Laeti. Web app installable (PWA) sur iPhone et Android, synchronisée en temps réel via Supabase, hébergée sur GitHub Pages. Nom provisoire : il se change dans `src/config.ts`, `index.html` et `vite.config.ts`.
 
-Ce dépôt contient la **V1** :
+Ce dépôt contient la **V1.5** :
 
 - **Configuration en 5 minutes** : on coche ses pièces, l'appli propose les tâches courantes avec un rythme et une durée par défaut.
 - **Le check du jour** : 5 tâches au plus, les petites victoires d'abord, quatre boutons (Fait, Fait par l'autre, Demain, Je prends). Un check manqué se rattrape au suivant (« Depuis mardi, qu'est-ce qui a été fait ? »), avec « Changer le jour » après coup.
@@ -11,7 +11,18 @@ Ce dépôt contient la **V1** :
 - **Synchro des deux téléphones** en temps réel, **hors ligne** compris (les changements attendent le réseau).
 - **Journal d'utilisation** pour décider des mises à jour sur des faits (voir plus bas), exportable en CSV.
 
+Nouveautés de la **V1.5** :
+
+- **Placard** : les produits ménagers à disposition, en trois états (En stock → Bientôt fini → Fini, un tap). Les indispensables sont proposés à la première ouverture ; ceux qui manquent passent « À racheter ». Le caddie ajoute le produit à la liste de courses de **Panier** (même base Supabase, sans doublon s'il y est déjà).
+- **Fiche de chaque tâche** (un tap sur la tâche) : produit idéal et ce que vous avez à la place, matériel, étapes, astuce, mises en garde (jamais Javel + vinaigre…). Les 40 tâches du catalogue ont leur fiche ; chaque tâche peut avoir ses propres consignes et ses propres produits.
+- **Le produit à prendre** sur chaque carte du check, avec un point orange s'il manque.
+- **« Autre chose de fait ? »** sur Aujourd'hui : une tâche faite hors du check, par qui, quel jour. Dans les pièces, ✓ = moi, et le bandeau propose « C'était Laeti ? ».
+
 Les nudges (rappel, merci, équilibre, repartir à zéro, mode absence) arrivent en V2 ; les rythmes adaptatifs, le lissage et les tâches saisonnières en V3.
+
+### Passer de la V1 à la V1.5
+
+Une seule chose à faire : dans Supabase, *SQL Editor* → *New query*, recoller `supabase/schema.sql` et *Run*. Le script ne touche pas aux données existantes. Tant que ce n'est pas fait, l'appli fonctionne comme avant et l'onglet Placard affiche un rappel.
 
 ## Mise en route (une seule fois)
 
@@ -41,11 +52,15 @@ Table `menage_journal` (un événement par ligne, `details` en JSON), exportable
 | `check_termine` | durée, nombre de tâches, actions par bouton, faites sur l'autre téléphone, ignorées, jours couverts, reprise | Le check tient-il en 15 secondes |
 | `check_abandonne` | durée, actions faites avant de quitter | Où le check décourage |
 | `check_vide`, `check_suite` | jours couverts, tâches restantes | Charge réelle de la maison |
-| `bouton_tache` | action, depuis le check ou une pièce, tâche, rythme, décalage de jour | Tâches toujours reportées, rythmes mal calés |
+| `bouton_tache` | action, depuis le check, une pièce ou « Autre chose de fait ? », tâche, rythme, décalage de jour | Tâches toujours reportées, rythmes mal calés, tâches faites hors check |
 | `changement_jour`, `annulation` | action, tâche | Erreurs de saisie, rattrapages |
 | `vue_onglet`, `vue_piece` | onglet, pièce | Quels écrans servent vraiment |
 | `tache_creee`, `tache_modifiee`, `tache_supprimee` | ancien et nouveau rythme ou durée, origine | Le catalogue de départ est-il juste |
 | `piece_creee`, `piece_modifiee`, `piece_supprimee`, `configuration_terminee` | nombre de tâches, ajustements, durée | Coût de la configuration |
+| `vue_fiche` | tâche, depuis le check ou une pièce | Les fiches servent-elles, pour quelles tâches |
+| `placard_configure`, `produit_etat`, `produit_cree`, `produit_modifie`, `produit_supprime` | produit, état avant et après | Rythme de consommation des produits |
+| `ajout_courses` | produit, résultat (ajouté, déjà sur la liste, erreur), depuis | Le lien avec Panier sert-il |
+| `correction_auteur` | tâche | Le ✓ = moi est-il le bon réglage par défaut |
 | `invitation`, `export` | type | Usages annexes |
 
 Premiers indicateurs : durée médiane du check, taux de report par tâche, jours sans check par semaine, part des ouvertures venues du rappel.
@@ -56,12 +71,12 @@ Premiers indicateurs : durée médiane du check, taux de report par tâche, jour
 npm install
 npm run dev              # contre la vraie base
 VITE_MOCK=1 npm run dev  # base factice en mémoire, sans réseau
-npm test                 # fraîcheur, jauge, choix du check, export CSV
+npm test                 # fraîcheur, jauge, choix du check, fiches, produits, export CSV
 npm run build
 npm run gen:illustrations  # après avoir changé le catalogue (src/lib/catalogue.ts)
 ```
 
-En mode factice, `window.mockAutre()` simule le second téléphone (profil Laeti) et `window.mockAutre('Aspirateur')` lui fait faire une tâche ; `window.mockHorsLigne = true` coupe le réseau.
+En mode factice, `window.mockAutre()` simule le second téléphone (profil Laeti) et `window.mockAutre('Aspirateur')` lui fait faire une tâche ; `window.mockHorsLigne = true` coupe le réseau ; `window.mockBaseV1 = true` (avant le chargement) simule une base pas encore passée en V1.5.
 
 Chaque push sur `main` est testé, construit et déployé sur GitHub Pages par `.github/workflows/deploy.yml`.
 
@@ -70,7 +85,9 @@ Chaque push sur `main` est testé, construit et déployé sur GitHub Pages par `
 - `src/lib/fraicheur.ts` : fraîcheur, jauge, sélection du check (fonctions pures, testées).
 - `src/lib/useMaison.ts` : données, temps réel, cache, file d'attente hors ligne, journal.
 - `src/lib/catalogue.ts` : pièces et tâches proposées, rythmes, durées.
-- `src/components/` : écrans (Arrivée, Configuration, Aujourd'hui, Pièces, Réglages).
+- `src/lib/fiches.ts` : fiches « comment faire » et choix du produit selon le placard (testés).
+- `src/lib/produits.ts` : produits ménagers du catalogue (indispensables et utiles en plus).
+- `src/components/` : écrans (Arrivée, Configuration, Aujourd'hui, Pièces, Placard, Réglages, fiche de tâche).
 - `supabase/schema.sql` : tables, règles d'accès, fonctions créer / rejoindre un foyer.
 
 Illustrations : [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (Microsoft), licence MIT.

@@ -8,10 +8,11 @@ import { Configuration } from './components/Configuration.tsx';
 import { Aujourdhui } from './components/Aujourdhui.tsx';
 import { Pieces } from './components/Pieces.tsx';
 import { Reglages } from './components/Reglages.tsx';
+import { Placard } from './components/Placard.tsx';
 import { Bandeau, type Message } from './components/Bandeau.tsx';
 import { Illus } from './components/Illus.tsx';
 
-type Onglet = 'aujourdhui' | 'pieces' | 'reglages';
+type Onglet = 'aujourdhui' | 'pieces' | 'placard' | 'reglages';
 
 /** Une « ouverture » de plus si l'on revient après au moins une minute ailleurs. */
 const RETOUR_MIN_MS = 60_000;
@@ -157,11 +158,12 @@ function Maison({ membre, onPerdu }: { membre: Membre; onPerdu: () => void }) {
 
       <div className="contenu">
         <div hidden={onglet !== 'aujourdhui'}>
-          <Aujourdhui maison={maison} actif={onglet === 'aujourdhui'} allerPieces={() => changerOnglet('pieces')} />
+          <Aujourdhui maison={maison} actif={onglet === 'aujourdhui'} allerPieces={() => changerOnglet('pieces')} informer={informer} />
         </div>
         {onglet === 'pieces' && (
           <Pieces maison={maison} informer={informer} pieceOuverte={pieceOuverte} setPieceOuverte={setPieceOuverte} />
         )}
+        {onglet === 'placard' && <Placard maison={maison} informer={informer} />}
         {onglet === 'reglages' && <Reglages maison={maison} informer={informer} />}
       </div>
 
@@ -175,6 +177,11 @@ function Maison({ membre, onPerdu }: { membre: Membre; onPerdu: () => void }) {
         <button className={onglet === 'pieces' ? 'actif' : ''} onClick={() => changerOnglet('pieces')} aria-current={onglet === 'pieces'}>
           <Illus nom="house" taille={26} />
           Pièces
+        </button>
+        <button className={onglet === 'placard' ? 'actif' : ''} onClick={() => changerOnglet('placard')} aria-current={onglet === 'placard'}>
+          <Illus nom="lotion-bottle" taille={26} />
+          Placard
+          {maison.produits.some((x) => x.etat === 'vide' && !x.courses_le) && <span className="point-onglet" aria-label="produits à racheter" />}
         </button>
         <button className={onglet === 'reglages' ? 'actif' : ''} onClick={() => changerOnglet('reglages')} aria-current={onglet === 'reglages'}>
           <Illus nom="key" taille={26} />

@@ -59,6 +59,7 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
           profils: maison.profils,
           pieces: maison.pieces,
           taches: maison.taches,
+          produits: maison.produits,
           historique,
           journal,
         };

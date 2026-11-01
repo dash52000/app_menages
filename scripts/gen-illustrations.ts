@@ -3,6 +3,7 @@
 // Usage : npm run gen:illustrations (après avoir modifié le catalogue).
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { BANQUE_ICONES, CATALOGUE, ICONES_INTERFACE } from '../src/lib/catalogue.ts';
+import { ICONES_PRODUITS, PRODUITS } from '../src/lib/produits.ts';
 
 interface Jeu {
   width?: number;
@@ -15,7 +16,7 @@ const jeu: Jeu = JSON.parse(
   readFileSync('node_modules/@iconify-json/fluent-emoji-flat/icons.json', 'utf8'),
 );
 
-const noms = new Set<string>([...BANQUE_ICONES, ...ICONES_INTERFACE]);
+const noms = new Set<string>([...BANQUE_ICONES, ...ICONES_INTERFACE, ...ICONES_PRODUITS, ...PRODUITS.map((p) => p.icone)]);
 for (const p of CATALOGUE) {
   noms.add(p.icone);
   for (const t of p.taches) noms.add(t.icone);

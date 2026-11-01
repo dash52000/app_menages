@@ -1123,7 +1123,7 @@ h2 {
   width: calc(100% - 24px);
   max-width: 536px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: var(--surface);
   border-radius: 24px;
   box-shadow: var(--ombre-forte);
@@ -1168,4 +1168,399 @@ h2 {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* =====================================================================
+   V1.5 : placard, fiches, « autre chose de fait »
+   ===================================================================== */
+
+.champ textarea {
+  border-radius: 16px;
+  border: 2px solid var(--trait);
+  background: var(--surface);
+  padding: 12px 16px;
+  font: inherit;
+  font-size: 1rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.champ textarea:focus {
+  border-color: var(--lagon);
+  outline: none;
+}
+
+/* Carte du check : le haut ouvre la fiche */
+button.carte-haut {
+  width: 100%;
+  text-align: left;
+  border-radius: 16px;
+  margin: -4px;
+  padding: 4px;
+  width: calc(100% + 8px);
+}
+
+button.carte-haut:active {
+  background: var(--surface-douce);
+}
+
+.chevron {
+  flex: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--encre-douce);
+  opacity: 0.6;
+  font-family: var(--titre);
+}
+
+.ligne-produit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--lagon-fonce);
+}
+
+.ligne-produit.manque {
+  color: var(--encre-douce);
+}
+
+.point-manque {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--a-rafraichir);
+  flex: none;
+}
+
+.bouton-autre {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--pouce);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--trait);
+  color: var(--lagon-fonce);
+  font-weight: 800;
+}
+
+/* Fiche */
+.fiche-tete {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: -6px;
+}
+
+.encart {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 0.95rem;
+}
+
+.encart p {
+  margin: 0;
+}
+
+.encart.consignes {
+  background: var(--lagon-pale);
+}
+
+.encart.astuce {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--trait);
+}
+
+.encart.attention {
+  background: var(--soleil-pale);
+}
+
+.besoins {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.besoin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: inset 0 0 0 2px var(--trait);
+}
+
+.besoin.ok {
+  box-shadow: inset 0 0 0 2px var(--lagon-pale);
+}
+
+.besoin.manque {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--a-rafraichir) 55%, transparent);
+}
+
+.besoin-texte {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bouton-courses {
+  flex: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--lagon);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+
+.materiel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  color: var(--encre-douce);
+  font-size: 0.95rem;
+}
+
+.etapes {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.etapes li::marker {
+  font-family: var(--titre);
+  font-weight: 600;
+  color: var(--lagon-fonce);
+}
+
+/* Placard */
+.placard-aide {
+  margin: -8px 0 0;
+  font-size: 0.9rem;
+}
+
+.titre-section {
+  font-size: 1.05rem;
+  margin: 4px 0 0;
+}
+
+.liste-placard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+}
+
+.ligne-placard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border-top: 1px solid var(--trait);
+}
+
+.ligne-placard:first-child {
+  border-top: 0;
+}
+
+.ligne-placard-corps {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  min-width: 0;
+  text-align: left;
+  border-radius: 14px;
+}
+
+.ligne-placard-corps > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ligne-placard-corps:active {
+  background: var(--surface-douce);
+}
+
+.pastille-etat {
+  flex: none;
+  min-height: 36px;
+  min-width: 92px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.pastille-etat.etat-ok {
+  background: color-mix(in srgb, var(--frais) 18%, transparent);
+  color: color-mix(in srgb, var(--frais) 70%, var(--encre));
+}
+
+.pastille-etat.etat-bas {
+  background: color-mix(in srgb, var(--tiede) 30%, transparent);
+  color: color-mix(in srgb, var(--tiede) 35%, var(--encre));
+}
+
+.pastille-etat.etat-vide {
+  background: color-mix(in srgb, var(--a-rafraichir) 26%, transparent);
+  color: color-mix(in srgb, var(--a-rafraichir) 45%, var(--encre));
+}
+
+.ligne-placard .bouton-courses {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.liste-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestion-produit,
+.choix-tache,
+.tache-choisie {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: inset 0 0 0 2px var(--trait);
+}
+
+.suggestion-produit > span:not(.plus-petit),
+.tache-choisie > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choix-tache > span:not(.etiquette) {
+  flex: 1;
+  font-weight: 700;
+}
+
+.choix-tache .etiquette {
+  margin-top: 0;
+}
+
+.tache-choisie {
+  box-shadow: inset 0 0 0 2px var(--lagon);
+  background: var(--lagon-pale);
+}
+
+.plus-petit {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--lagon-pale);
+  color: var(--lagon-fonce);
+  font-weight: 800;
+  font-size: 1.2rem;
+}
+
+.liste-choix-tache {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.groupe-piece {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.puce-illus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.puce-profil.active {
+  background: var(--profil);
+}
+
+/* Point discret sur l'onglet Placard : un indispensable est fini */
+.point-onglet {
+  position: absolute;
+  top: 8px;
+  left: calc(50% + 10px);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--a-rafraichir);
+}
+
+/* Bandeau à deux boutons */
+.bandeau-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.bandeau.deux-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.bandeau.deux-actions .bandeau-actions {
+  justify-content: flex-end;
+}
+
+/* Bouton qui reste visible au-dessus de la barre d'onglets */
+.bouton-collant {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 92px);
+  z-index: 4;
+}
+
+.bouton-caddie {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--lagon-pale);
+}
+
+.bouton-caddie:active {
+  transform: scale(0.94);
 }

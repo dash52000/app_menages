@@ -175,7 +175,10 @@ export const BANQUE_ICONES = [
 ];
 
 /** Illustrations utilisées par l'interface elle-même. */
-export const ICONES_INTERFACE = ['sparkles', 'house', 'check-mark-button', 'clapping-hands', 'sun-with-face', 'waving-hand'];
+export const ICONES_INTERFACE = [
+  'sparkles', 'house', 'check-mark-button', 'clapping-hands', 'sun-with-face', 'waving-hand',
+  'lotion-bottle', 'warning', 'light-bulb', 'memo', 'shopping-cart', 'hammer-and-wrench',
+];
 
 export const RYTHMES: Array<{ jours: number; libelle: string }> = [
   { jours: 1, libelle: 'Chaque jour' },

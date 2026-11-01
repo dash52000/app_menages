@@ -3,16 +3,23 @@ import { ajouterJours, aujourdhui, ecart, jourRelatif, type Jour } from '../lib/
 import {
   MAX_CHECK,
   candidatesCheck,
+  estDue,
   estFaiteLe,
+  estReportee,
   estReserveeLe,
   jauge as calculerJauge,
   selectionCheck,
 } from '../lib/fraicheur.ts';
 import { libelleDuree } from '../lib/catalogue.ts';
+import { besoinsDe } from '../lib/fiches.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Action, Profil, Tache } from '../lib/types.ts';
 import { Anneau, phraseJauge } from './Jauge.tsx';
 import { Illus } from './Illus.tsx';
+import { LigneProduit } from './Produits.tsx';
+import { FicheTache } from './FicheTache.tsx';
+import { AutreFait } from './AutreFait.tsx';
+import type { Message } from './Bandeau.tsx';
 
 interface Fait {
   action: Action;
@@ -52,15 +59,19 @@ export function Aujourdhui({
   maison,
   actif,
   allerPieces,
+  informer,
 }: {
   maison: Maison;
   actif: boolean;
   allerPieces: () => void;
+  informer: (m: Message) => void;
 }) {
   const jour = aujourdhui();
   const { taches, pieces, profils, autres, moi, foyer } = maison;
   const [session, setSession] = useState<Session | null>(null);
   const [choixJour, setChoixJour] = useState<string | null>(null);
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
+  const [autreFait, setAutreFait] = useState(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const videNote = useRef<Jour | null>(null);
@@ -80,9 +91,16 @@ export function Aujourdhui({
     [session, taches],
   );
 
-  const traitee = useCallback(
-    (t: Tache) => Boolean(session?.faits[t.id]) || estFaiteLe(t, jour),
+  /** Faite sur l'autre téléphone, ou notée via « Autre chose de fait ? », pendant le check. */
+  const faiteAilleurs = useCallback(
+    (t: Tache) =>
+      !session?.faits[t.id] && (estFaiteLe(t, jour) || (!estDue(t, jour) && !estReportee(t, jour) && !estReserveeLe(t, jour))),
     [session, jour],
+  );
+  const reporteeAilleurs = useCallback((t: Tache) => !session?.faits[t.id] && estReportee(t, jour), [session, jour]);
+  const traitee = useCallback(
+    (t: Tache) => Boolean(session?.faits[t.id]) || faiteAilleurs(t) || reporteeAilleurs(t),
+    [session, faiteAilleurs, reporteeAilleurs],
   );
   const nbTraitees = cartes.filter(traitee).length;
   const complet = cartes.length > 0 && nbTraitees === cartes.length;
@@ -97,7 +115,7 @@ export function Aujourdhui({
       if (!s || s.termine) return;
       const compte: Record<Action, number> = { fait: 0, fait_autre: 0, demain: 0, je_prends: 0 };
       for (const f of Object.values(s.faits)) compte[f.action] += 1;
-      const ailleurs = cartes.filter((t) => !s.faits[t.id] && estFaiteLe(t, jour)).length;
+      const ailleurs = cartes.filter((t) => !s.faits[t.id] && faiteAilleurs(t)).length;
       maison.terminerCheck({
         raison,
         duree_s: Math.round((Date.now() - s.debut) / 1000),
@@ -110,7 +128,7 @@ export function Aujourdhui({
       });
       setSession({ ...s, termine: true, journalise: true });
     },
-    [cartes, jour, joursCouverts, maison, traitee],
+    [cartes, faiteAilleurs, joursCouverts, maison, traitee],
   );
 
   useEffect(() => {
@@ -313,16 +331,19 @@ export function Aujourdhui({
                 );
               }
 
-              if (!f && estFaiteLe(t, jour)) {
+              if (faiteAilleurs(t) || reporteeAilleurs(t)) {
+                const reportee = reporteeAilleurs(t);
                 return (
-                  <li key={t.id} className="carte compacte faite">
+                  <li key={t.id} className={`carte compacte ${reportee ? 'reportee' : 'faite'}`}>
                     <span className="pastille-ok" aria-hidden>
-                      ✓
+                      {reportee ? '→' : '✓'}
                     </span>
                     <div className="carte-texte">
                       <strong>{t.nom}</strong>
                       <span className="discret">
-                        {t.derniere_par === moi ? 'Fait' : `Fait par ${nomProfil(t.derniere_par)}`} aujourd’hui
+                        {reportee
+                          ? 'Pour demain'
+                          : `${t.derniere_par === moi ? 'Fait' : `Fait par ${nomProfil(t.derniere_par)}`} ${jourRelatif(t.derniere_fois ?? jour, jour)}`}
                       </span>
                     </div>
                   </li>
@@ -332,18 +353,22 @@ export function Aujourdhui({
               const prisePar = estReserveeLe(t, jour) ? t.reserve_par : null;
               return (
                 <li key={t.id} className="carte">
-                  <div className="carte-haut">
+                  <button className="carte-haut" onClick={() => setFicheOuverte(t.id)} aria-label={`${t.nom} : comment faire`}>
                     <Illus nom={t.icone} taille={48} />
-                    <div className="carte-texte">
+                    <span className="carte-texte">
                       <strong>{t.nom}</strong>
                       <span className="discret">
                         {nomPiece(t)} · {libelleDuree(t.duree_min)}
                       </span>
+                      {besoinsDe(t).length > 0 && <LigneProduit options={besoinsDe(t)[0]} maison={maison} />}
                       {prisePar && (
                         <span className="etiquette">{prisePar === moi ? 'Pour toi aujourd’hui' : `${nomProfil(prisePar)} la prend`}</span>
                       )}
-                    </div>
-                  </div>
+                    </span>
+                    <span className="chevron" aria-hidden>
+                      ›
+                    </span>
+                  </button>
                   <div className="carte-actions">
                     <button className="bouton-fait" onClick={() => agir(t, 'fait')}>
                       ✓ Fait
@@ -381,6 +406,29 @@ export function Aujourdhui({
           )}
         </>
       )}
+
+      {taches.length > 0 && (
+        <button className="bouton-autre" onClick={() => setAutreFait(true)}>
+          <Illus nom="check-mark-button" taille={22} />
+          Autre chose de fait ?
+        </button>
+      )}
+
+      {ficheOuverte && taches.some((t) => t.id === ficheOuverte) && (
+        <FicheTache
+          maison={maison}
+          tache={taches.find((t) => t.id === ficheOuverte)!}
+          depuis="check"
+          onFermer={() => setFicheOuverte(null)}
+          onFait={
+            session.ids.includes(ficheOuverte) && !session.faits[ficheOuverte]
+              ? () => agir(taches.find((t) => t.id === ficheOuverte)!, 'fait')
+              : undefined
+          }
+          informer={informer}
+        />
+      )}
+      {autreFait && <AutreFait maison={maison} onFermer={() => setAutreFait(false)} informer={informer} />}
     </section>
   );
 }

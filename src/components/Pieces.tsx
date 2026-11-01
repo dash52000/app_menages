@@ -7,6 +7,7 @@ import type { Piece, Tache } from '../lib/types.ts';
 import { Anneau, Barre } from './Jauge.tsx';
 import { Feuille } from './Feuille.tsx';
 import { FeuilleTache } from './FeuilleTache.tsx';
+import { FicheTache } from './FicheTache.tsx';
 import { Illus } from './Illus.tsx';
 import type { Message } from './Bandeau.tsx';
 
@@ -94,6 +95,7 @@ function DetailPiece({
 }) {
   const jour = aujourdhui();
   const [edition, setEdition] = useState<Tache | 'nouvelle' | null>(null);
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [reglages, setReglages] = useState(false);
   const { noter } = maison;
 
@@ -111,9 +113,25 @@ function DetailPiece({
   const j = jauge(taches, jour);
   const nomProfil = (id: string | null) => maison.profils.find((p) => p.id === id)?.prenom;
 
+  /** ✓ = moi ; le bandeau propose de corriger (« C'était Laeti ? ») ou d'annuler. */
   const faire = (t: Tache) => {
     const annuler = maison.agir(t.id, 'fait', { depuis: 'piece' });
-    informer({ texte: `${t.nom} : fait ✓`, action: { libelle: 'Annuler', faire: () => annuler() } });
+    informer({
+      texte: `${t.nom} : fait ✓`,
+      duree: 7000,
+      actions: [
+        ...maison.autres.map((autre) => ({
+          libelle: `C’était ${autre.prenom} ?`,
+          faire: () => {
+            annuler(true);
+            const annulerAutre = maison.agir(t.id, 'fait_autre', { depuis: 'piece', profilId: autre.id, silencieux: true });
+            maison.noter('correction_auteur', { tache: t.nom, vers: 'autre', depuis: 'piece' }, t.id);
+            informer({ texte: `${t.nom} : fait par ${autre.prenom} ✓`, action: { libelle: 'Annuler', faire: () => annulerAutre() } });
+          },
+        })),
+        { libelle: 'Annuler', faire: () => annuler() },
+      ],
+    });
   };
 
   return (
@@ -144,7 +162,7 @@ function DetailPiece({
               : 'pas encore notée';
           return (
             <li key={t.id} className="ligne-tache">
-              <button className="ligne-tache-corps" onClick={() => setEdition(t)}>
+              <button className="ligne-tache-corps" onClick={() => setFicheOuverte(t.id)}>
                 <Illus nom={t.icone} taille={40} />
                 <span className="ligne-tache-texte">
                   <strong>{t.nom}</strong>
@@ -171,6 +189,20 @@ function DetailPiece({
         + Ajouter une tâche
       </button>
 
+      {ficheOuverte && !edition && taches.some((t) => t.id === ficheOuverte) && (
+        <FicheTache
+          maison={maison}
+          tache={taches.find((t) => t.id === ficheOuverte)!}
+          depuis="piece"
+          onFermer={() => setFicheOuverte(null)}
+          onFait={() => faire(taches.find((t) => t.id === ficheOuverte)!)}
+          onModifier={() => {
+            setEdition(taches.find((t) => t.id === ficheOuverte)!);
+            setFicheOuverte(null);
+          }}
+          informer={informer}
+        />
+      )}
       {edition && (
         <FeuilleTache
           maison={maison}

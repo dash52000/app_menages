@@ -120,7 +120,7 @@ describe('check', () => {
     expect(dues).toBeGreaterThanOrEqual(2);
     expect(dues).toBeLessThanOrEqual(8);
     const j = jauge(taches, J)!;
-    expect(j).toBeGreaterThan(60);
+    expect(j).toBeGreaterThan(55);
     expect(j).toBeLessThan(90);
   });
 });

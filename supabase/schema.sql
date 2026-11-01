@@ -1,8 +1,9 @@
 -- =====================================================================
--- Coup de frais (appli ménage) — schéma Supabase V1
+-- Coup de frais (appli ménage) — schéma Supabase V1.5
 --
 -- Installation : Supabase > SQL Editor > New query, coller ce fichier, « Run ».
--- Le script peut être relancé sans casse (il ne supprime rien).
+-- Le script peut être relancé sans casse (il ne supprime rien) : pour passer
+-- de la V1 à la V1.5, il suffit de le coller et de le lancer à nouveau.
 --
 -- Toutes les tables sont préfixées menage_ : elles cohabitent sans risque
 -- avec celles de Panier dans le même projet Supabase.
@@ -70,6 +71,29 @@ create table if not exists menage_taches (
 
 create index if not exists menage_taches_foyer on menage_taches (foyer_id);
 create index if not exists menage_taches_piece on menage_taches (piece_id);
+
+-- V1.5 : fiche « comment faire », consignes perso, produits choisis à la main.
+alter table menage_taches add column if not exists fiche text;      -- clé de la fiche du catalogue
+alter table menage_taches add column if not exists note text;       -- « Mes consignes »
+alter table menage_taches add column if not exists produits text[]; -- null = ceux de la fiche
+
+-- ---------- Placard : produits ménagers à disposition (V1.5) -------------------
+create table if not exists menage_produits (
+  id            uuid primary key default gen_random_uuid(),
+  foyer_id      uuid not null references menage_foyers(id) on delete cascade,
+  cle           text,                          -- clé du catalogue, null pour un produit maison
+  nom           text not null,
+  icone         text not null,
+  etat          text not null default 'ok' check (etat in ('ok', 'bas', 'vide')),
+  indispensable boolean not null default false,
+  courses_le    timestamptz,                   -- ajouté à la liste de Panier
+  maj_par       uuid references menage_profils(id) on delete set null,
+  maj_le        timestamptz not null default now(),
+  cree_le       timestamptz not null default now()
+);
+
+create unique index if not exists menage_produits_cle on menage_produits (foyer_id, cle) where cle is not null;
+create index if not exists menage_produits_foyer on menage_produits (foyer_id);
 
 -- ---------- Historique : une ligne par tâche faite ----------------------------
 create table if not exists menage_historique (
@@ -213,6 +237,7 @@ alter table menage_pieces     enable row level security;
 alter table menage_taches     enable row level security;
 alter table menage_historique enable row level security;
 alter table menage_journal    enable row level security;
+alter table menage_produits   enable row level security;
 
 do $$
 begin
@@ -243,7 +268,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['menage_pieces', 'menage_taches', 'menage_historique', 'menage_journal'] loop
+  foreach t in array array['menage_pieces', 'menage_taches', 'menage_historique', 'menage_journal', 'menage_produits'] loop
     if not exists (select 1 from pg_policies where tablename = t and policyname = 'mon_foyer') then
       execute format(
         'create policy mon_foyer on %I for all to authenticated using (foyer_id = menage_mon_foyer()) with check (foyer_id = menage_mon_foyer())',
@@ -258,7 +283,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['menage_foyers', 'menage_profils', 'menage_pieces', 'menage_taches'] loop
+  foreach t in array array['menage_foyers', 'menage_profils', 'menage_pieces', 'menage_taches', 'menage_produits'] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

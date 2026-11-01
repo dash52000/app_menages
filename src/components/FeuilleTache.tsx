@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { BANQUE_ICONES, CATALOGUE, DUREES, RYTHMES, libelleDuree, libelleRythme } from '../lib/catalogue.ts';
 import type { Maison } from '../lib/useMaison.ts';
-import type { Piece, Tache } from '../lib/types.ts';
+import type { Piece, Produit, Tache } from '../lib/types.ts';
+import { cleFiche } from '../lib/fiches.ts';
 import { Feuille } from './Feuille.tsx';
 import { Illus } from './Illus.tsx';
 import type { Message } from './Bandeau.tsx';
@@ -25,6 +26,12 @@ export function FeuilleTache({
   const [rythme, setRythme] = useState(tache?.rythme_jours ?? 7);
   const [duree, setDuree] = useState(tache?.duree_min ?? 10);
   const [depuisCatalogue, setDepuisCatalogue] = useState(false);
+  const [note, setNote] = useState(tache?.note ?? '');
+  const [produits, setProduits] = useState<string[]>(tache?.produits ?? []);
+  const fiche = cleFiche(nom) ?? tache?.fiche ?? null;
+  // Un produit du catalogue est retenu par sa clé (il reste trouvé même s'il est recréé), un produit maison par son id.
+  const refProduit = (x: Produit) => x.cle ?? x.id;
+  const basculerProduit = (ref: string) => setProduits((l) => (l.includes(ref) ? l.filter((y) => y !== ref) : [...l, ref]));
 
   // Suggestions : les tâches du catalogue pour ce type de pièce, pas encore présentes.
   const presentes = new Set(maison.taches.filter((t) => t.piece_id === piece.id).map((t) => t.nom.toLowerCase()));
@@ -39,9 +46,20 @@ export function FeuilleTache({
     const n = nom.trim();
     if (!n) return;
     if (tache) {
-      maison.modifierTache(tache, { nom: n, icone, rythme_jours: rythme, duree_min: duree });
+      maison.modifierTache(tache, {
+        nom: n,
+        icone,
+        rythme_jours: rythme,
+        duree_min: duree,
+        note: note.trim() || null,
+        produits: produits.length ? produits : null,
+      });
     } else {
-      maison.ajouterTache(piece.id, { nom: n, icone, rythme, duree }, depuisCatalogue ? 'catalogue' : 'libre');
+      maison.ajouterTache(
+        piece.id,
+        { nom: n, icone, rythme, duree, note: note.trim() || null, produits: produits.length ? produits : null },
+        depuisCatalogue ? 'catalogue' : 'libre',
+      );
       informer({ texte: `${n} ajoutée à ${piece.nom}` });
     }
     onFermer();
@@ -132,6 +150,40 @@ export function FeuilleTache({
           ))}
         </div>
       </div>
+
+      <label className="champ">
+        <span>Mes consignes</span>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={fiche ? 'En plus de la fiche : « le produit est sous l’évier »…' : 'Comment vous faites, ce qu’il faut prendre…'}
+          rows={3}
+          maxLength={500}
+        />
+      </label>
+
+      {maison.base15 && maison.produits.length > 0 && (
+        <div className="bloc">
+          <p className="etiquette-champ">Produits</p>
+          <p className="discret petit">
+            {fiche ? 'Rien de coché : ceux de la fiche. Coche pour choisir les tiens.' : 'Ceux du placard qui servent pour cette tâche.'}
+          </p>
+          <div className="puces">
+            {[...maison.produits]
+              .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+              .map((x) => (
+                <button
+                  key={x.id}
+                  className={`puce puce-illus ${produits.includes(refProduit(x)) ? 'active' : ''}`}
+                  onClick={() => basculerProduit(refProduit(x))}
+                >
+                  <Illus nom={x.icone} taille={18} />
+                  {x.nom}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
 
       <button className="bouton-principal" disabled={!nom.trim()} onClick={enregistrer}>
         {tache ? 'Enregistrer' : 'Ajouter'}
