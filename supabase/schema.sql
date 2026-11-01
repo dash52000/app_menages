@@ -293,3 +293,20 @@ begin
   end loop;
 end;
 $$;
+
+-- ---------- Droits d'accès explicites (au cas où le projet n'expose pas les nouvelles tables) ----
+grant select, insert, update, delete on
+  menage_foyers, menage_profils, menage_membres, menage_pieces,
+  menage_taches, menage_historique, menage_journal, menage_produits
+to authenticated;
+
+-- ---------- Fait voir tout de suite les nouvelles tables et colonnes à l'API ----------------
+notify pgrst, 'reload schema';
+
+-- ---------- Vérification : les deux colonnes doivent afficher « true » -------------------------
+select
+  to_regclass('public.menage_produits') is not null as placard_ok,
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'menage_taches' and column_name = 'fiche'
+  ) as fiches_ok;

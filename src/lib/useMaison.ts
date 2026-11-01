@@ -226,6 +226,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   });
   // La base a-t-elle les ajouts de la V1.5 (placard, fiches) ?
   const [base15, setBase15] = useState<boolean>(() => lire<Cache | null>(CLES.cache, null)?.base15 ?? true);
+  const [detailBase, setDetailBase] = useState<string | null>(null);
   const base15Ref = useRef(base15);
   base15Ref.current = base15;
   const [statut, setStatut] = useState<Statut>('chargement');
@@ -303,6 +304,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
       return;
     }
     setBase15(!produitsAbsents);
+    setDetailBase(produitsAbsents ? `${pr.error?.code ?? ''} ${pr.error?.message ?? ''}`.trim() : null);
     if (!f.data) {
       setStatut('introuvable');
       return;
@@ -728,6 +730,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   return {
     ...etat,
     base15,
+    detailBase,
     statut,
     enAttente,
     moi,

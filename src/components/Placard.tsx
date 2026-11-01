@@ -12,6 +12,7 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
   const [ajout, setAjout] = useState(false);
   const [detail, setDetail] = useState<Produit | null>(null);
   const [envois, setEnvois] = useState<Set<string>>(new Set());
+  const [verification, setVerification] = useState(false);
 
   if (!maison.base15) {
     return (
@@ -23,8 +24,21 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
           <h2>Une mise à jour de la base à faire</h2>
           <p className="discret">
             Le placard a besoin d’une nouvelle table. Dans Supabase : SQL Editor → New query, colle le fichier
-            supabase/schema.sql du dépôt et lance « Run ». Ensuite, rouvre l’appli.
+            supabase/schema.sql en version 1.5 (2e ligne : « schéma Supabase V1.5 ») et lance « Run ». Le résultat
+            doit afficher « true » deux fois.
           </p>
+          <button
+            className="bouton-secondaire"
+            disabled={verification}
+            onClick={async () => {
+              setVerification(true);
+              await maison.charger();
+              setVerification(false);
+            }}
+          >
+            {verification ? 'Vérification…' : 'Vérifier à nouveau'}
+          </button>
+          {maison.detailBase && <p className="discret petit">Détail : {maison.detailBase}</p>}
         </div>
       </section>
     );
