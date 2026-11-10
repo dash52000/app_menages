@@ -1658,3 +1658,181 @@ button.carte-haut:active {
 .creer-produit {
   box-shadow: inset 0 0 0 2px var(--lagon);
 }
+
+/* ---------- V1.7 : Quick, « J'ai 1 min », maison qui s'éclaire ---------- */
+
+.etiquette-quick {
+  background: var(--lagon-pale);
+  color: var(--lagon-fonce);
+}
+
+.etiquette.en-ligne {
+  display: inline-block;
+  margin: 0 0 0 8px;
+  vertical-align: 1px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+}
+
+.boutons-bas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bouton-minute {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--pouce);
+  border-radius: 999px;
+  background: var(--soleil-pale);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--soleil) 70%, transparent);
+  color: var(--encre);
+  font-weight: 800;
+}
+
+.bouton-minute:active {
+  transform: scale(0.98);
+}
+
+.carte.une-minute {
+  box-shadow: none;
+  background: var(--surface-douce);
+}
+
+.points-autres {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.points-autres i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--encre-douce);
+}
+
+.points-autres i.utilise {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--encre-douce);
+}
+
+.eclairage {
+  background: var(--surface);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eclairage-tete {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eclairage-tete strong {
+  font-family: var(--titre);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.fenetres {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fenetre {
+  width: 100%;
+  min-height: 62px;
+  border-radius: 12px;
+  background: var(--piste);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--encre-douce);
+  transition: background 600ms ease, box-shadow 600ms ease, color 600ms ease;
+}
+
+.fenetre span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.fenetre .illus {
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: filter 600ms ease, opacity 600ms ease;
+}
+
+.fenetre.allumee {
+  background: var(--soleil-pale);
+  color: var(--encre);
+  box-shadow: inset 0 0 0 2px var(--soleil), 0 0 18px color-mix(in srgb, var(--soleil) 45%, transparent);
+}
+
+.fenetre.allumee .illus {
+  filter: none;
+  opacity: 1;
+}
+
+.puces-jour {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.puce-jour {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 8px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--encre-douce);
+  box-shadow: inset 0 0 0 1.5px var(--trait);
+}
+
+.puce-jour i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--piste);
+}
+
+.puce-jour.on {
+  color: var(--encre);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--profil, var(--soleil)) 70%, transparent);
+}
+
+.puce-jour.on i {
+  background: var(--profil, var(--soleil));
+  box-shadow: 0 0 8px var(--profil, var(--soleil));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fenetre,
+  .fenetre .illus {
+    transition: none;
+  }
+}

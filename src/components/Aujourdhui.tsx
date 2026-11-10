@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ajouterJours, aujourdhui, ecart, jourRelatif, type Jour } from '../lib/dates.ts';
 import {
+  MAX_AUTRES,
   MAX_CHECK,
   candidatesCheck,
+  estQuick,
+  propositionSuivante,
   estDue,
   estFaiteLe,
   estReportee,
@@ -20,6 +23,8 @@ import { Illus } from './Illus.tsx';
 import { LigneProduit } from './Produits.tsx';
 import { FicheTache } from './FicheTache.tsx';
 import { AutreFait } from './AutreFait.tsx';
+import { UneMinute } from './UneMinute.tsx';
+import { Eclairage } from './Eclairage.tsx';
 import type { Message } from './Bandeau.tsx';
 
 interface Fait {
@@ -39,6 +44,10 @@ interface Session {
   /** Le journal a déjà reçu la fin (ou l'abandon) de cette session. */
   journalise: boolean;
   reprise: boolean;
+  /** « Autre proposition » déjà utilisées dans ce check. */
+  autres: number;
+  /** Cartes arrivées par « Autre proposition » sans être dues. */
+  proposees: string[];
 }
 
 /** Au-delà de 10 minutes hors de l'appli, on repart sur un check neuf. */
@@ -53,7 +62,18 @@ function salutation(prenom: string): string {
 function nouvelleSession(taches: Tache[], jour: Jour, vus: string[] = []): Session {
   const { liste } = selectionCheck(taches, jour, MAX_CHECK, new Set(vus));
   const ids = liste.map((t) => t.id);
-  return { jour, ids, vus: [...vus, ...ids], debut: Date.now(), faits: {}, termine: false, journalise: false, reprise: false };
+  return {
+    jour,
+    ids,
+    vus: [...vus, ...ids],
+    debut: Date.now(),
+    faits: {},
+    termine: false,
+    journalise: false,
+    reprise: false,
+    autres: 0,
+    proposees: [],
+  };
 }
 
 export function Aujourdhui({
@@ -75,6 +95,7 @@ export function Aujourdhui({
   const [choixJour, setChoixJour] = useState<string | null>(null);
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [autreFait, setAutreFait] = useState(false);
+  const [uneMinute, setUneMinute] = useState(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const videNote = useRef<Jour | null>(null);
@@ -97,7 +118,9 @@ export function Aujourdhui({
   /** Faite sur l'autre téléphone, ou notée via « Autre chose de fait ? », pendant le check. */
   const faiteAilleurs = useCallback(
     (t: Tache) =>
-      !session?.faits[t.id] && (estFaiteLe(t, jour) || (!estDue(t, jour) && !estReportee(t, jour) && !estReserveeLe(t, jour))),
+      !session?.faits[t.id] &&
+      (estFaiteLe(t, jour) ||
+        (!session?.proposees.includes(t.id) && !estDue(t, jour) && !estReportee(t, jour) && !estReserveeLe(t, jour))),
     [session, jour],
   );
   const reporteeAilleurs = useCallback((t: Tache) => !session?.faits[t.id] && estReportee(t, jour), [session, jour]);
@@ -204,6 +227,37 @@ export function Aujourdhui({
     setChoixJour(null);
   };
 
+  /** Remplace la carte par la tâche suivante ; après trois, ouvre la liste complète. */
+  const proposerAutre = (t: Tache) => {
+    if (!session) return;
+    if (session.autres >= MAX_AUTRES) {
+      maison.noter('autre_proposition', { depuis: 'check', tache: t.nom, rang: session.autres + 1, liste: true }, t.id);
+      setAutreFait(true);
+      return;
+    }
+    const suivante = propositionSuivante(actives, jour, new Set([...session.vus, ...session.ids]));
+    maison.noter(
+      'autre_proposition',
+      { depuis: 'check', tache: t.nom, remplacee_par: suivante?.nom ?? null, rang: session.autres + 1 },
+      t.id,
+    );
+    if (!suivante) {
+      informer({ texte: 'Pas d’autre proposition pour l’instant.' });
+      return;
+    }
+    setSession((s) =>
+      s
+        ? {
+            ...s,
+            ids: s.ids.map((id) => (id === t.id ? suivante.id : id)),
+            vus: [...s.vus, suivante.id],
+            autres: s.autres + 1,
+            proposees: estDue(suivante, jour) ? s.proposees : [...s.proposees, suivante.id],
+          }
+        : s,
+    );
+  };
+
   const continuer = () => {
     setSession(nouvelleSession(actives, jour, session?.vus ?? []));
     maison.noter('check_suite', { reste });
@@ -240,6 +294,10 @@ export function Aujourdhui({
             <span className="discret">{phraseJauge(pourcent)}</span>
           </span>
         </button>
+      )}
+
+      {taches.length > 0 && (
+        <Eclairage pieces={pieces} taches={actives} profils={profils} moi={moi} jour={jour} onPiece={allerPieces} />
       )}
 
       {taches.length === 0 ? (
@@ -363,6 +421,7 @@ export function Aujourdhui({
                       <span className="discret">
                         {nomPiece(t)} · {libelleDuree(t.duree_min)}
                       </span>
+                      {estQuick(t) && <span className="etiquette etiquette-quick">Quick</span>}
                       {besoinsVisibles(t, maison.produits).length > 0 && (
                         <LigneProduit options={besoinsVisibles(t, maison.produits)[0]} maison={maison} />
                       )}
@@ -398,6 +457,9 @@ export function Aujourdhui({
                         Je prends
                       </button>
                     )}
+                    <button className="lien-action" onClick={() => proposerAutre(t)}>
+                      {session.autres >= MAX_AUTRES ? 'Voir la liste' : 'Autre'}
+                    </button>
                   </div>
                 </li>
               );
@@ -413,10 +475,22 @@ export function Aujourdhui({
       )}
 
       {taches.length > 0 && (
-        <button className="bouton-autre" onClick={() => setAutreFait(true)}>
-          <Illus nom="check-mark-button" taille={22} />
-          Autre chose de fait ?
-        </button>
+        <div className="boutons-bas">
+          <button
+            className="bouton-minute"
+            onClick={() => {
+              maison.noter('quick_ouvert', {});
+              setUneMinute(true);
+            }}
+          >
+            <Illus nom="sparkles" taille={22} />
+            J’ai 1 min
+          </button>
+          <button className="bouton-autre" onClick={() => setAutreFait(true)}>
+            <Illus nom="check-mark-button" taille={22} />
+            Autre chose de fait ?
+          </button>
+        </div>
       )}
 
       {ficheOuverte && taches.some((t) => t.id === ficheOuverte) && (
@@ -433,6 +507,7 @@ export function Aujourdhui({
           informer={informer}
         />
       )}
+      {uneMinute && <UneMinute maison={maison} onFermer={() => setUneMinute(false)} informer={informer} />}
       {autreFait && <AutreFait maison={maison} onFermer={() => setAutreFait(false)} informer={informer} />}
     </section>
   );

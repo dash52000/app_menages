@@ -466,7 +466,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     (
       tacheId: string,
       action: Action,
-      o: { depuis: 'check' | 'piece' | 'autre'; jour?: Jour; profilId?: string; silencieux?: boolean },
+      o: { depuis: 'check' | 'piece' | 'autre' | 'quick'; jour?: Jour; profilId?: string; silencieux?: boolean },
     ): ((silencieux?: boolean) => void) => {
       const t = tacheActuelle(tacheId);
       if (!t) return () => {};
@@ -524,9 +524,12 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     [executer, foyerId, majTache, moi, noter],
   );
 
-  /** Fin d'un check : mémorise le jour (rattrapage et futur rappel) et le journalise. */
+  /**
+   * Fin d'un check : mémorise le jour (rattrapage et futur rappel) et le journalise.
+   * Sans détails (une Quick faite avec « J'ai 1 min »), le jour est validé sans journal.
+   */
   const terminerCheck = useCallback(
-    (details: Ligne) => {
+    (details?: Ligne) => {
       const jour = aujourdhui();
       if (etatRef.current.foyer?.dernier_check !== jour) {
         executer({ table: 'menage_foyers', type: 'update', id: foyerId, valeurs: { dernier_check: jour } });
