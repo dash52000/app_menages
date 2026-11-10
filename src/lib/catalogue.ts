@@ -1,8 +1,11 @@
 // Catalogue de départ : les pièces courantes et leurs tâches classiques,
 // avec un rythme et une durée par défaut. Le foyer coche ce qui le concerne
 // à la configuration, puis ajuste à l'usage.
+// Les tâches d'une minute ou moins sont des « Quick » (bouton « J'ai 1 min »).
 // Les icônes sont des noms d'illustrations (dossier public/illus, généré par
 // scripts/gen-illustrations.ts à partir de Fluent Emoji, licence MIT).
+
+import { normaliser } from './normalise.ts';
 
 export interface TacheCatalogue {
   nom: string;
@@ -54,6 +57,8 @@ export const CATALOGUE: PieceCatalogue[] = [
     taches: [
       t('Vider le lave-vaisselle', 'fork-and-knife-with-plate', 2, 2),
       t('Nettoyer le plan de travail', 'sponge', 2, 5),
+      t('Coup d’éponge sur le plan', 'sponge', 2, 1),
+      t('Essuyer la façade du frigo', 'ice', 14, 1),
       t("Nettoyer l'évier", 'potable-water', 7, 5),
       t('Nettoyer les plaques', 'fire', 7, 5),
       t('Laver le sol', 'bucket', 7, 15),
@@ -75,6 +80,8 @@ export const CATALOGUE: PieceCatalogue[] = [
       t('Douche ou baignoire', 'shower', 7, 15),
       t('Laver le sol', 'bucket', 7, 10),
       t('Changer les serviettes', 'soap', 7, 2),
+      t('Essuyer le robinet', 'droplet', 3, 1),
+      t('Coup de chiffon sur le miroir', 'mirror', 4, 1),
       t('Détartrer robinets et pommeau', 'droplet', 30, 15, false),
       t('Vider la poubelle', 'wastebasket', 7, 2, false),
     ],
@@ -86,6 +93,7 @@ export const CATALOGUE: PieceCatalogue[] = [
     coche: true,
     taches: [
       t('Nettoyer les toilettes', 'toilet', 7, 10),
+      t('Coup de brosse', 'toilet', 3, 1),
       t('Laver le sol', 'bucket', 14, 5),
       t('Recharger le papier', 'roll-of-paper', 7, 2, false),
     ],
@@ -98,6 +106,8 @@ export const CATALOGUE: PieceCatalogue[] = [
     taches: [
       t('Aspirateur', 'broom', 7, 20),
       t('Poussière', 'feather', 14, 15),
+      t('Ranger la table basse', 'package', 3, 1),
+      t('Taper les coussins', 'couch-and-lamp', 4, 1),
       t('Ranger', 'package', 3, 5, false),
       t('Laver le sol', 'bucket', 14, 15, false),
       t('Aspirer le canapé', 'couch-and-lamp', 30, 10, false),
@@ -111,6 +121,8 @@ export const CATALOGUE: PieceCatalogue[] = [
     coche: true,
     taches: [
       t('Changer les draps', 'bed', 14, 15),
+      t('Faire le lit', 'bed', 3, 1),
+      t('Aérer la chambre', 'window', 2, 1),
       t('Aspirateur', 'broom', 7, 15),
       t('Poussière', 'feather', 14, 10),
       t('Retourner le matelas', 'zzz', 90, 10, false),
@@ -125,6 +137,7 @@ export const CATALOGUE: PieceCatalogue[] = [
     taches: [
       t('Aspirateur', 'broom', 7, 5),
       t('Secouer le paillasson', 'door', 14, 2),
+      t('Vider le vide-poche', 'key', 7, 1),
       t('Ranger les chaussures', 'running-shoe', 7, 5, false),
     ],
   },
@@ -217,7 +230,7 @@ export const RYTHMES: Array<{ jours: number; libelle: string }> = [
   { jours: 365, libelle: 'Chaque année' },
 ];
 
-export const DUREES = [2, 5, 10, 15, 20, 30, 45, 60];
+export const DUREES = [1, 2, 5, 10, 15, 20, 30, 45, 60];
 
 export function libelleRythme(jours: number): string {
   return RYTHMES.find((r) => r.jours === jours)?.libelle ?? `Tous les ${jours} jours`;
@@ -237,4 +250,23 @@ export function rythmeCourt(jours: number): string {
 
 export function libelleDuree(min: number): string {
   return min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? String(min % 60).padStart(2, '0') : ''}` : `${min} min`;
+}
+
+/**
+ * Les tâches Quick du catalogue qui manquent à un foyer déjà configuré, rangées
+ * dans ses pièces (reconnues par leur nom ou leur illustration).
+ */
+export function quicksAAjouter(
+  pieces: Array<{ id: string; nom: string; icone: string }>,
+  taches: Array<{ piece_id: string; nom: string }>,
+): Array<{ pieceId: string; tache: TacheCatalogue }> {
+  const res: Array<{ pieceId: string; tache: TacheCatalogue }> = [];
+  for (const c of CATALOGUE) {
+    const piece =
+      pieces.find((p) => normaliser(p.nom) === normaliser(c.nom)) ?? (c.cle === 'partout' ? undefined : pieces.find((p) => p.icone === c.icone));
+    if (!piece) continue;
+    const deja = new Set(taches.filter((t) => t.piece_id === piece.id).map((t) => normaliser(t.nom)));
+    for (const t of c.taches) if (t.duree <= 1 && !deja.has(normaliser(t.nom))) res.push({ pieceId: piece.id, tache: t });
+  }
+  return res;
 }

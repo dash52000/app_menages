@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BANQUE_ICONES, CATALOGUE, estSaisonniere, rythmeCourt } from '../lib/catalogue.ts';
 import { aujourdhui, ilYa, jourRelatif } from '../lib/dates.ts';
-import { estDue, estFaiteLe, figeeDepuis, fraicheurAffichee, jauge, tachesActives, urgence } from '../lib/fraicheur.ts';
+import { estDue, estFaiteLe, figeeDepuis, fraicheurAffichee, jauge, tachesActives, urgence, estQuick } from '../lib/fraicheur.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Piece, Tache } from '../lib/types.ts';
 import { Anneau, Barre } from './Jauge.tsx';
@@ -203,6 +203,7 @@ function DetailPiece({
                   <span className="discret petit">
                     {quand} · {rythmeCourt(t.rythme_jours)}
                     {arret && !fige ? ' · toute l’année' : ''}
+                    {estQuick(t) && <span className="etiquette etiquette-quick en-ligne">Quick</span>}
                   </span>
                   <Barre fraicheur={f} />
                 </span>

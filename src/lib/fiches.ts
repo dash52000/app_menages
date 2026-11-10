@@ -476,6 +476,46 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     astuce: 'Depuis octobre 2023, l’entretien du poêle est obligatoire chaque année, et le ramonage au moins une fois par an. Au-delà de 2,5 tonnes de granulés par an, deux ramonages sont recommandés, dont un pendant la saison de chauffe.',
     attention: ['En location, l’entretien et le ramonage sont en général à la charge de l’occupant, sauf clause contraire du bail.'],
   },
+
+  // ---------- Quick (une minute ou moins) ----------
+  'Coup d’éponge sur le plan': {
+    besoins: [['multi-surfaces', 'liquide-vaisselle'], ['eponges', 'microfibres']],
+    etapes: ['Pousser les miettes vers l’évier.', 'Un passage d’éponge humide sur toute la longueur.'],
+    astuce: 'Le faire juste après avoir rangé la vaisselle du repas : l’éponge est déjà en main.',
+  },
+  'Essuyer la façade du frigo': {
+    besoins: [['multi-surfaces', 'liquide-vaisselle'], ['microfibres']],
+    etapes: ['Microfibre humide sur la porte et la poignée.', 'Repasser le côté sec pour éviter les traces.'],
+  },
+  'Essuyer le robinet': {
+    besoins: [['microfibres']],
+    etapes: ['Microfibre sèche sur le robinet et le bord du lavabo, après la douche ou le brossage de dents.'],
+    astuce: 'Sécher l’eau tout de suite évite le calcaire : il n’y a plus besoin de détartrer aussi souvent.',
+  },
+  'Coup de chiffon sur le miroir': {
+    besoins: [['microfibres']],
+    etapes: ['Microfibre à peine humide, en S de haut en bas.', 'Finir avec le côté sec.'],
+  },
+  'Coup de brosse': {
+    besoins: [['brosse-wc']],
+    etapes: ['Un tour de brosse sous les rebords et au fond.', 'Tirer la chasse en laissant la brosse dans l’eau pour la rincer.'],
+  },
+  'Ranger la table basse': {
+    etapes: ['Ramener tasses et verres à la cuisine.', 'Ranger télécommandes, courrier et magazines à leur place.'],
+  },
+  'Taper les coussins': {
+    etapes: ['Taper chaque coussin pour lui redonner du volume.', 'Plier le plaid sur l’accoudoir.'],
+  },
+  'Faire le lit': {
+    etapes: ['Tirer la couette à plat.', 'Remettre les oreillers en place.'],
+    astuce: 'Le faire après avoir aéré quelques minutes : un lit refait tout de suite garde l’humidité de la nuit.',
+  },
+  'Aérer la chambre': {
+    etapes: ['Ouvrir grand la fenêtre, même en hiver.', 'Refermer au bout de 5 à 10 minutes : l’air est renouvelé sans refroidir les murs.'],
+  },
+  'Vider le vide-poche': {
+    etapes: ['Jeter tickets et papiers inutiles.', 'Ranger ce qui traîne à sa place, laisser seulement clés et portefeuille.'],
+  },
 };
 
 export const FICHES: Record<string, Fiche> = Object.fromEntries(

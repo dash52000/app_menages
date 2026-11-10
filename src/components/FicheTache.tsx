@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { libelleDuree, rythmeCourt } from '../lib/catalogue.ts';
 import { aujourdhui, ilYa } from '../lib/dates.ts';
 import { besoinsVisibles, ficheDe } from '../lib/fiches.ts';
-import { estFaiteLe } from '../lib/fraicheur.ts';
+import { estFaiteLe, estQuick } from '../lib/fraicheur.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Tache } from '../lib/types.ts';
 import { Feuille } from './Feuille.tsx';
@@ -47,6 +47,7 @@ export function FicheTache({
         <Illus nom={tache.icone} taille={52} />
         <span className="discret">
           {piece?.nom} · {libelleDuree(tache.duree_min)} · {rythmeCourt(tache.rythme_jours)}
+          {estQuick(tache) && <span className="etiquette etiquette-quick en-ligne">Quick</span>}
           <br />
           {tache.derniere_fois && tache.derniere_par
             ? `Fait ${ilYa(tache.derniere_fois, jour)}${qui ? ` par ${qui}` : ''}`

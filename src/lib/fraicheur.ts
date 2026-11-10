@@ -10,6 +10,14 @@ export const SEUIL_DUE = 0.1;
 export const DUREE_COURTE = 2;
 /** Jamais plus de tâches à la fois dans le check. */
 export const MAX_CHECK = 5;
+/** Tâche « Quick » : une minute ou moins. */
+export const QUICK_MAX = 1;
+/** « Autre proposition » : au plus trois d'affilée, puis la liste complète. */
+export const MAX_AUTRES = 3;
+
+export function estQuick(t: Pick<Tache, 'duree_min'>): boolean {
+  return t.duree_min <= QUICK_MAX;
+}
 
 function joursDepuis(t: Tache, jour: Jour): number {
   if (!t.derniere_fois) return t.rythme_jours; // jamais faite : à faire
@@ -92,6 +100,32 @@ export function selectionCheck(
 ): { liste: Tache[]; reste: number } {
   const c = candidatesCheck(taches, jour).filter((t) => !exclure.has(t.id));
   return { liste: c.slice(0, max), reste: Math.max(0, c.length - max) };
+}
+
+/** Faite, reportée ou réservée aujourd'hui : à ne pas reproposer. */
+function horsJeu(t: Tache, jour: Jour): boolean {
+  return estFaiteLe(t, jour) || estReportee(t, jour) || estReserveeLe(t, jour);
+}
+
+/**
+ * « Autre proposition » : la prochaine tâche à mettre à la place d'une carte.
+ * D'abord les tâches dues pas encore vues, dans l'ordre du check ; s'il n'y en
+ * a plus, la plus avancée des autres (sans rien montrer de son retard).
+ */
+export function propositionSuivante(taches: Tache[], jour: Jour, exclure: ReadonlySet<string>): Tache | null {
+  const dues = candidatesCheck(taches, jour).filter((t) => !exclure.has(t.id));
+  if (dues.length) return dues[0];
+  const autres = taches
+    .filter((t) => !exclure.has(t.id) && !horsJeu(t, jour))
+    .sort((a, b) => urgence(b, jour) - urgence(a, jour) || a.duree_min - b.duree_min || a.nom.localeCompare(b.nom, 'fr'));
+  return autres[0] ?? null;
+}
+
+/** Les tâches Quick à proposer avec « J'ai 1 min », la plus en retard d'abord. */
+export function quicksDuJour(taches: Tache[], jour: Jour): Tache[] {
+  return taches
+    .filter((t) => estQuick(t) && !estFaiteLe(t, jour) && !estReportee(t, jour))
+    .sort((a, b) => urgence(b, jour) - urgence(a, jour) || a.nom.localeCompare(b.nom, 'fr'));
 }
 
 /**

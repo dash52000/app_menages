@@ -2,7 +2,7 @@
 
 Le suivi du ménage à deux, pour Damien et Laeti. Web app installable (PWA) sur iPhone et Android, synchronisée en temps réel via Supabase, hébergée sur GitHub Pages. Nom provisoire : il se change dans `src/config.ts`, `index.html` et `vite.config.ts`.
 
-Ce dépôt contient la **V1.6** :
+Ce dépôt contient la **V1.7** :
 
 - **Configuration en 5 minutes** : on coche ses pièces, l'appli propose les tâches courantes avec un rythme et une durée par défaut.
 - **Le check du jour** : 5 tâches au plus, les petites victoires d'abord, quatre boutons (Fait, Fait par l'autre, Demain, Je prends). Un check manqué se rattrape au suivant (« Depuis mardi, qu'est-ce qui a été fait ? »), avec « Changer le jour » après coup.
@@ -24,6 +24,15 @@ Nouveautés de la **V1.6** :
 - **Produits spécialisés** (nettoyant vitrocéramique, nettoyant inox, anti-moisissure…) : dans une fiche, ils passent devant le basique seulement s'ils sont au placard. Absents, ils ne sont jamais poussés à l'achat.
 - **Poêle à granulés** : une pièce avec quatre tâches et leurs fiches (vider le creuset, cendrier et aspiration, vitre, entretien annuel par un pro), et le stock de granulés sur sa page.
 - **Interrupteur En marche / À l'arrêt** : à l'arrêt, les tâches de la pièce sortent du check et de la jauge, fraîcheur figée, puis reprennent où elles en étaient. L'entretien annuel reste actif toute l'année. Toute pièce peut être mise à l'arrêt depuis son menu « ••• ».
+
+Nouveautés de la **V1.7** :
+
+- **Tâches Quick** : une tâche d'une minute ou moins porte l'étiquette Quick. Le catalogue en propose une dizaine (essuyer le robinet, coup de brosse, faire le lit…), et toute tâche réglée sur 1 min en devient une.
+- **« J'ai 1 min »** sur Aujourd'hui : une seule Quick, la plus en retard. Trois « Autre proposition » au plus, puis la liste des Quick. Une Quick faite suffit à valider le jour. Un foyer déjà configuré ajoute les Quick du catalogue d'un tap depuis ce panneau.
+- **« Autre » sur chaque carte du check** : la carte est remplacée par la tâche suivante (une due pas encore vue, sinon la plus avancée des autres), sans rien reporter. Après trois, le bouton ouvre la liste complète.
+- **La maison qui s'éclaire** : sous la jauge, chaque pièce s'allume dès qu'une de ses tâches est faite aujourd'hui, et tout repart dans la pénombre le lendemain. Une pastille pour le foyer, une pour chacun.
+
+Aucune mise à jour de la base n'est nécessaire pour la V1.7.
 
 Les nudges (rappel, merci, équilibre, repartir à zéro, mode absence) arrivent en V2 ; les rythmes adaptatifs, le lissage et les tâches saisonnières en V3.
 
@@ -64,6 +73,8 @@ Table `menage_journal` (un événement par ligne, `details` en JSON), exportable
 | `vue_onglet`, `vue_piece` | onglet, pièce | Quels écrans servent vraiment |
 | `tache_creee`, `tache_modifiee`, `tache_supprimee` | ancien et nouveau rythme ou durée, origine | Le catalogue de départ est-il juste |
 | `piece_creee`, `piece_modifiee`, `piece_supprimee`, `configuration_terminee` | nombre de tâches, ajustements, durée | Coût de la configuration |
+| `autre_proposition` | depuis (check ou quick), tâche passée, tâche proposée à la place, rang, liste ouverte | Tâches qu'on évite, la limite de trois est-elle juste |
+| `quick_ouvert`, `quick_fait` | tâche, propositions passées avant, depuis la liste | « J'ai 1 min » sert-il, quelles Quick sont faites |
 | `vue_fiche` | tâche, depuis le check ou une pièce | Les fiches servent-elles, pour quelles tâches |
 | `placard_configure`, `produit_etat`, `produit_cree`, `produit_modifie`, `produit_supprime` | produit, état avant et après, famille, origine (catalogue, recherche, libre, poêle) | Rythme de consommation, produits manquants au catalogue |
 | `ajout_courses` | produit, résultat (ajouté, déjà sur la liste, erreur), depuis | Le lien avec Panier sert-il |
@@ -79,7 +90,7 @@ Premiers indicateurs : durée médiane du check, taux de report par tâche, jour
 npm install
 npm run dev              # contre la vraie base
 VITE_MOCK=1 npm run dev  # base factice en mémoire, sans réseau
-npm test                 # fraîcheur, jauge, choix du check, fiches, produits, export CSV
+npm test                 # fraîcheur, jauge, choix du check, Quick, fiches, produits, export CSV
 npm run build
 npm run gen:illustrations  # après avoir changé le catalogue (src/lib/catalogue.ts)
 ```
