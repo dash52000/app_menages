@@ -251,6 +251,10 @@ export function creerClientFactice(): any {
       }
       return { data: null, error: { message: 'rpc inconnue' } };
     },
+    // Base factice : pas d'IA, l'appli doit continuer sans (§9).
+    functions: {
+      invoke: async () => ({ data: { ok: false, raison: 'indisponible' }, error: null }),
+    },
     channel: () => {
       const canal = {
         on: (_type: string, filtre: { table: string; event: string }, cb: (ev: any) => void) => {

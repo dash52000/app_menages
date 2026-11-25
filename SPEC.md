@@ -1,6 +1,6 @@
 # SPEC — Coup de frais
 
-Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.11.0 (J0 à J2 en ligne, migrations F4, `quick` et J3 sécurité passées ; IA0 en cours) · Fiche mise à jour : 25/11/2026
+Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.12.0 (J0 à J2 en ligne, migrations F4, `quick`, J3 sécurité et IA0 passées ; fonction `llm` déployée, essai réel en attente) · Fiche mise à jour : 25/11/2026
 À lire d'abord : `SOCLE.md` (planchers et conventions). Cette fiche ne répète pas le socle.
 
 ---
@@ -55,9 +55,13 @@ Les jours de test (31/10, 01/11, 10/11) gonflent certains chiffres. `supabase/me
 - `menage_tentatives` (id, user_id, action `rejoindre`/`creer`, ok, cree_le) : trace des essais de code et des créations de foyer, **jamais le code tapé**. RLS sans règle et aucun droit pour `anon`/`authenticated` : invisible depuis l'API. Purgée au-delà de 30 jours.
 - `menage_rejoindre_foyer` et `menage_creer_foyer` renvoient `{ erreur: 'code_inconnu' | 'trop_essais' }` au lieu d'une exception (une exception annulerait la trace de l'essai). L'écran d'arrivée 1.11 lit ce champ.
 
+**Réalisé en V1.12 (IA0)** (`supabase/migrations/2026-11-25_ia0_quota.sql`, repris dans `schema.sql`)
+- `menage_ia_usage` (foyer_id, jour, nb_appels, minute_debut, nb_minute) : quota par foyer et par jour (heure de Paris), fenêtre d'une minute. Gardé 90 jours.
+- `menage_ia_pauses` (modele, jusqu_au) : modèle en pause après 429, 5xx ou délai dépassé, partagé entre les instances de la fonction.
+- Ces deux tables : RLS sans règle, aucun droit pour `anon`/`authenticated` ; seules les fonctions `menage_ia_reserver(foyer)` et `menage_ia_pause(modele, jusqu_au)`, exécutables par `service_role` uniquement, y touchent.
+- Événement `llm_appel` (details : consigne, usage, modele, succes, latence_ms, bascules, essais [modèle, issue, ms], arret, test), **sans contenu**. Deux règles RLS restrictives empêchent un téléphone d'écrire ou de modifier un `llm_appel` ; il peut toujours le lire (export CSV).
+
 **Prévu**
-- `llm_appel` (événement du journal) pour la brique IA.
-- `ia_usage` (foyer_id, jour, nb_appels) : quota.
 - `propositions_ia` (id, foyer_id, type, payload JSON, statut proposée/acceptée/refusée, cree_le, traite_par) : trace de chaque carte de proposition.
 
 ## 6. Écrans et parcours
@@ -129,25 +133,28 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 
 **Mise en prod du 25/11** : migration `j3_securite` appliquée après un nouvel essai à blanc sur l'état du jour. Comptages avant = après : foyers 1, profils 2, membres 3, pièces 9, tâches 54, historique 114, produits 18, journal 850. Contrôles : 10 règles réécrites avec `(select …)`, 0 droit de table pour `anon`, `anon` ne peut plus exécuter les fonctions de foyer ; vérification en transaction annulée : un membre voit ses 54 tâches, un code faux renvoie `code_inconnu` et laisse une trace. Advisors après migration : plus d'alerte « RLS réévaluée par ligne » sur `menage_*` ; restent les alertes voulues (connexions anonymes, fonctions `security definer`, RLS sans règle sur `menage_tentatives` et `menage_sauvegarde`) et des clés étrangères non indexées en INFO sur de petites tables (sans effet à cette taille). Les alertes des autres applis du projet (Panier, Chevet) sont hors périmètre.
 
-**Reste à faire en J3** : définir comment la fonction `llm` identifie le foyer appelant (voir §9).
+**Identification de l'appelant par la fonction `llm`** (décidé le 25/11) : l'appli appelle `supabase.functions.invoke('llm')`, qui envoie le jeton de la session anonyme ; la fonction est déployée avec `verify_jwt` (passerelle). Le foyer et le profil sont lus dans `menage_membres` **avec le jeton de l'appelant** (règle « moi »), jamais pris dans la requête ; sans foyer → 403. Quota, pauses et journal s'écrivent côté serveur avec la clé `service_role`, fournie d'office à la fonction et absente du client.
+
+**Mise en prod IA0 du 25/11** : migration `ia0_quota` appliquée après essai à blanc (10 appels passent puis `quota_minute`, `quota_jour` à 100, téléphone refusé sur la réservation, la lecture du compteur et l'écriture d'un `llm_appel`, `check_vu` toujours accepté). Comptages avant = après (journal 852). `schema.sql` complet rejoué à blanc sur la vraie base. Advisors : seules nouvelles alertes, « RLS sans règle » sur `menage_ia_usage` et `menage_ia_pauses`, voulues.
 
 ## 9. IA
 
 **Dérogation au socle** : le socle dit « pas d'IA sauf si la fiche le demande ». Cette fiche le demande, dans le cadre ci-dessous.
 
 **Architecture**
-- Une Edge Function Supabase `llm`. Les clés Gemini et Groq sont des secrets Supabase : jamais dans le repo, jamais dans le client.
-- Chaîne de modèles par type de besoin : une chaîne **texte** (Gemini puis Groq) et une chaîne **vision** (Gemini en priorité ; vérifier ce que Groq propose). Modèles choisis au moment du code.
-- Basculement : un seul essai par modèle ; sur 429 (en lisant `Retry-After`), 503 ou délai dépassé (8 s), le modèle passe en pause et on essaie le suivant ; sur 400 ou 401, on ne bascule pas (bug côté nous). Toute la chaîne en échec : l'appli continue sans IA.
-- Sorties en JSON validé côté serveur. Un JSON invalide est traité comme un échec.
-- Quota : 100 appels par jour et par foyer (décidé le 25/11). Garde-fou ajouté, à confirmer : un plafond par minute (10 par exemple) pour qu'un bug en boucle ne vide pas le palier gratuit en quelques minutes. Chaque appel est journalisé (`llm_appel` : modèle, latence, nombre de bascules, succès), sans le contenu.
+- Une Edge Function Supabase `llm` (`supabase/functions/llm/`, déployée le 25/11, `verify_jwt` activé). Les clés Gemini et Groq sont des secrets Supabase (`MENAGE_GEMINI_API_KEY`, `MENAGE_GROQ_API_KEY`) : jamais dans le repo, jamais dans le client.
+- Le téléphone n'envoie pas de texte libre au modèle : il choisit une **consigne** par son nom (`consignes.ts`) et envoie des données ; chaque consigne a son validateur JSON. En IA0 : `essai` (texte) et `essai_vision` (image).
+- Chaînes (choisies le 25/11 d'après les docs du jour) : **texte** `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → Groq `openai/gpt-oss-120b` ; **vision** `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → Groq `qwen/qwen3.8-27b` (seul modèle vision de Groq, en préversion : peut disparaître sans préavis).
+- Basculement : un seul essai par modèle ; sur 429 (en lisant `Retry-After`, sinon le `RetryInfo` de Gemini, sinon 60 s), 5xx dont 503 (30 s par défaut) ou délai dépassé (8 s, pause 30 s), le modèle passe en pause et on essaie le suivant ; sur 400, 401, 403 ou 404, on s'arrête sans basculer (bug ou réglage côté nous). Modèle en pause ou sans clé : sauté. Toute la chaîne en échec : réponse `{ ok: false, raison: 'indisponible' }`, et `demanderIA` (`src/lib/ia.ts`) renvoie `null` sans jamais lever d'erreur : l'appli continue sans IA.
+- Sorties en JSON validé côté serveur. Un JSON invalide est traité comme un échec du modèle : on essaie le suivant, sans pause.
+- Quota : 100 appels par jour et par foyer, 10 par minute (décidés le 25/11), réservés avant l'appel en une requête verrouillée. Chaque appel réservé est journalisé (`llm_appel`, voir §5), sans le contenu ; les refus de quota ne sont pas journalisés (une boucle ne remplit pas le journal).
 
 **Règle centrale** : le LLM n'écrit jamais en base. Il renvoie des **cartes de proposition** (type, tâche ciblée, avant/après, raison courte). L'appli les affiche avec « OK / Non » ; en cas de OK, le code existant écrit, donc l'annulation actuelle fonctionne. Toute proposition citant un id inconnu est rejetée côté serveur.
 
 **Forme** : invisible, sans chat. Pas de chat libre.
 
 **Fini quand…**
-- **IA0 — Brique** : bascule testée en simulant 429 puis 503 sur chaque modèle de la chaîne ; échec complet sans erreur bloquante ; aucun secret dans le client ni le repo.
+- **IA0 — Brique** : bascule testée en simulant 429 puis 503 sur chaque modèle de la chaîne ; échec complet sans erreur bloquante ; aucun secret dans le client ni le repo. · *code et tests faits en V1.12 (`supabase/functions/llm/chaine.test.ts` : 429 et 503 sur chacun des 6 modèles, délai, JSON invalide, 400/401, réseau coupé, tout en échec ; `src/lib/ia.test.ts` : l'appli reçoit `null`, jamais d'exception) ; essai réel depuis Réglages (« Essai IA », visible en session de test) à faire*
 - **IA1 — Saisie en langage naturel** : « on a fait la salle de bain à fond » → cartes de cases à cocher parmi les tâches existantes (la liste avec ids est fournie au modèle), ou carte de nouvelle tâche (pièce, rythme, durée). 3 taps au maximum : écrire, envoyer, OK.
 - **IA2 — Tâches du jour** : le LLM transforme « j'ai 20 min, Laeti rentre à 18 h » en paramètres (minutes, pièces à éviter) ; le **classement est fait par le code** (retard, durée, refus récents). Sans IA, un curseur de durée prend le relais.
 - **IA3 — Revue du journal** : le journal est agrégé en SQL (retards, refus, rythmes modifiés, doublons probables) ; le LLM ne reçoit pas les lignes brutes, formule des propositions et juge les cas ambigus. Résultat mis en cache 7 jours. À lancer seulement après F1 et au moins 2 semaines de journal propre.
@@ -174,9 +181,8 @@ NFC ; tâches attitrées ; suivi de rivaux, classements, niveaux, XP ; chat libr
 
 ## 14. Questions ouvertes
 
-Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
+Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 - **Q6** : heure, canal et contenu du rappel unique (J8).
-- **Q7** : plafond par minute pour les appels IA (10 proposé).
 - **Q9** : les tables de Panier (`produits`, `produits_alias`, `articles_liste`, `courses`, `courses_articles`), dans lesquelles Coup de frais écrit pour « Aux courses », ont une règle « toujours vrai » pour `anon` et `authenticated` : n'importe qui ayant la clé publique peut les lire et les modifier. Hors périmètre de cette fiche (autre appli) ; à traiter dans Panier (Opus).
 - **Q8** : valider avec Laeti la restauration des durées d'avant pour les 8 tâches passées à 1 min (F5).
 
@@ -187,7 +193,7 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 | J0 | F1, F4, F7 | Sonnet · code livré en 1.8.0 |
 | J1 | F2, F3, F5, F8 | Sonnet · code livré en 1.9.0 |
 | J2 | F6 | Sonnet · code livré en 1.10.0 |
-| J3 | §8 sécurité et RLS, puis IA0 | Opus · sécurité en 1.11.0 |
+| J3 | §8 sécurité et RLS, puis IA0 | Opus · sécurité en 1.11.0, IA0 en 1.12.0 |
 | J4 | IA1 | Sonnet |
 | J5 | IA2 | Sonnet |
 | J6 | IA3 (après 2 semaines de journal propre) | Sonnet |
@@ -204,6 +210,7 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 - **25/11/2026 (J1, choix d'implémentation)** : un refus (« Autre proposition ») met la tâche en pause 48 h dans le check comme dans « J'ai 1 min », sauf si quelqu'un l'a prise (« Je prends ») ; la liste complète des Quick, choisie à la main, garde les tâches refusées ; tâche de fond = plus de 2× son rythme (exactement 2× n'en est pas une) ; une seule par lot de cartes, la rotation prend celle proposée le plus anciennement, et elle est toujours placée dans les cinq cartes ; libellé neutre « Tâche de fond », gris, sans compteur de jours ; `quick` reste vide pour les tâches existantes (repli sur la durée), la migration ne le pose que sur les tâches d'1 min et les 8 tâches de Laeti.
 - **25/11/2026 (J0, choix d'implémentation)** : fusion lessive : on garde la tâche de la Buanderie (5 min, tous les 3 j), « Partout » (celle que Laeti avait passée à 1 min) disparaît, et la tâche gardée reçoit `quick` par la migration J1 ; fusion plan de travail : on garde « Nettoyer le plan de travail » ; l'historique des tâches fusionnées est rattaché à la tâche gardée (renommé en conséquence) et chaque fusion laisse un événement `fusion_taches` ; la session de test s'éteint seule après 3 h ; l'avertissement de nom proche ne s'affiche qu'à la création, jamais à la modification ; copies de sécurité de la migration dans le schéma `menage_sauvegarde`, conservées jusqu'à validation par Damien.
 
+- **25/11/2026 (J3/IA0, fonction `llm`)** : le foyer de l'appelant est lu avec son propre jeton (RLS), jamais pris dans la requête ; quota, pauses et `llm_appel` écrits par le serveur seulement, un téléphone ne peut pas écrire de `llm_appel` (Q7 : plafond de 10 appels par minute et par foyer) ; consignes nommées côté serveur, pas de texte libre ; 403 et 404 s'ajoutent à 400/401 (arrêt sans bascule) ; tout 5xx bascule comme 503 ; un JSON invalide fait passer au modèle suivant sans pause ; quota compté en jour de Paris ; essai réel par deux boutons dans Réglages, visibles seulement en session de test.
 - **25/11/2026 (J3, sécurité)** : limites d'essais 5 par téléphone / 15 min et 30 pour le projet / 1 h (jonction), 3 par téléphone et 20 pour le projet / 24 h (création) ; code toujours à 6 signes (la limite suffit) ; un essai bloqué l'est sans sermon (« laisse passer un quart d'heure ») ; trace des essais sans le code tapé, gardée 30 jours ; les règles de Panier ne sont pas touchées depuis cette appli (Q9).
 
 ## 17. Checklist « terminé » pour cette itération
@@ -212,6 +219,6 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 - [x] Copie de sécurité avant migration F4 (`menage_sauvegarde`, tables `*_20261125`), comptage avant/après identique : F4 lancée le 25/11 (56 → 54 tâches, historique 114 → 114)
 - [ ] Champ `quick` migré (`2026-11-25_j1_quick.sql`, fait le 25/11), puis durées des 8 tâches de Laeti restaurées après son accord (`2026-11-25_j1_durees_a_valider.sql`, Q8)
 - [x] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0 (lancé le 25/11), avant toute mise en ligne de l'IA
-- [ ] Bascule 429 / 503 testée sur chaque modèle (IA0)
-- [ ] Aucun secret dans le repo ni dans le client
+- [x] Bascule 429 / 503 testée sur chaque modèle (IA0, tests simulés le 25/11) ; essai réel avec les vraies clés à faire
+- [x] Aucun secret dans le repo ni dans le client (vérifié le 25/11 : code et build)
 - [ ] SPEC.md à jour dans le même commit que chaque jalon
