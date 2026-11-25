@@ -1908,3 +1908,99 @@ button.carte-haut:active {
 .besoin-texte .discret.petit + .discret.petit {
   display: block;
 }
+
+/* ---------- Saisie en une phrase (IA1) ------------------------------- */
+
+.saisie-ia {
+  display: flex;
+  gap: 8px;
+}
+
+.saisie-ia input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--pouce);
+  border-radius: 999px;
+  border: 2px solid var(--trait);
+  background: var(--surface);
+  padding: 0 18px;
+  font-size: 1.02rem;
+}
+
+.saisie-ia input:focus {
+  border-color: var(--lagon);
+  outline: none;
+}
+
+.bouton-envoyer {
+  flex: none;
+  width: var(--pouce);
+  height: var(--pouce);
+  border-radius: 50%;
+  background: var(--lagon);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.bouton-envoyer:disabled {
+  background: var(--piste);
+  color: var(--encre-douce);
+}
+
+.liste-saisie {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ligne-saisie {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: inset 0 0 0 2px var(--trait);
+  min-height: var(--pouce);
+}
+
+.ligne-saisie input[type='checkbox'] {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  accent-color: var(--lagon);
+}
+
+.ligne-saisie-texte {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ligne-saisie.nouvelle {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.ligne-saisie-haut {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ligne-saisie-champs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ligne-saisie-champs .champ select {
+  padding: 0 8px;
+  font-size: 0.92rem;
+}

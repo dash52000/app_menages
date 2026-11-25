@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { appelerChaine, attenteDemandee, CHAINES, cleModele, DELAI_MS, type Modele, type Usage } from './chaine.ts';
-import { CONSIGNES } from './consignes.ts';
+import { CONSIGNES, preparerContexteSaisie } from './consignes.ts';
 
 const T0 = new Date('2026-11-25T14:00:00Z');
 const maintenant = () => T0;
@@ -194,5 +194,51 @@ describe('détails', () => {
     });
     expect(ko.sortie).toBeNull();
     expect(ko.essais[0].issue).toBe('json_invalide');
+  });
+});
+
+describe('saisie (IA1) dans la vraie chaîne : un id inventé fait passer au modèle suivant', () => {
+  const ctx = preparerContexteSaisie(
+    [{ id: 'uuid-sdb', nom: 'Salle de bain' }],
+    [{ id: 'uuid-douche', nom: 'Nettoyer la douche', piece_id: 'uuid-sdb' }],
+    [{ prenom: 'Laeti' }],
+  );
+  const demande = CONSIGNES.saisie.demande({ texte: 'on a fait la douche' }, undefined, ctx)!;
+  const valider = (v: unknown) => CONSIGNES.saisie.valider(v, ctx);
+  const inventee = '{"cartes":[{"type":"cocher","tache":"t42"},{"type":"cocher","tache":"uuid-douche"}]}';
+  const bonne = '{"cartes":[{"type":"cocher","tache":"t1","raison":"la douche"}]}';
+
+  it('modèle 1 : ids inventés seulement → rejeté, sans pause ; modèle 2 : carte valable', async () => {
+    const appels: string[] = [];
+    const premier = cleModele(CHAINES.texte[0]);
+    const f = (async (url: string, init?: RequestInit) => {
+      const cle = modeleVise(url, init);
+      appels.push(cle);
+      return repOk(cle, cle === premier ? inventee : bonne);
+    }) as unknown as typeof fetch;
+    const r = await appelerChaine(CHAINES.texte, demande, valider, { fetch: f, cles, pauses: {}, maintenant });
+    expect(appels).toEqual([premier, cleModele(CHAINES.texte[1])]);
+    expect(r.essais[0].issue).toBe('json_invalide');
+    expect(r.pauses).toEqual([]);
+    expect(r.sortie).toEqual({ cartes: [{ type: 'cocher', tache_id: 'uuid-douche', raison: 'la douche' }], rejetees: 0 });
+  });
+
+  it('tous les modèles inventent : échec complet, jamais de carte', async () => {
+    const f = (async (url: string, init?: RequestInit) => repOk(modeleVise(url, init), inventee)) as unknown as typeof fetch;
+    const r = await appelerChaine(CHAINES.texte, demande, valider, { fetch: f, cles, pauses: {}, maintenant });
+    expect(r.sortie).toBeNull();
+    expect(r.essais.map((e) => e.issue)).toEqual(['json_invalide', 'json_invalide', 'json_invalide']);
+  });
+
+  it('la demande envoyée au modèle ne contient ni id ni prénom', async () => {
+    let corps = '';
+    const f = (async (url: string, init?: RequestInit) => {
+      corps = String(init?.body);
+      return repOk(modeleVise(url, init), bonne);
+    }) as unknown as typeof fetch;
+    const d = CONSIGNES.saisie.demande({ texte: 'Laeti a fait la douche' }, undefined, ctx)!;
+    await appelerChaine(CHAINES.texte, d, valider, { fetch: f, cles, pauses: {}, maintenant });
+    expect(corps).not.toMatch(/uuid-|Laeti/);
+    expect(corps).toContain('quelqu’un a fait la douche');
   });
 });
