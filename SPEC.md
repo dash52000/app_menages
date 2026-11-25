@@ -155,7 +155,7 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 **Forme** : invisible, sans chat. Pas de chat libre.
 
 **Fini quand…**
-- **IA0 — Brique** : bascule testée en simulant 429 puis 503 sur chaque modèle de la chaîne ; échec complet sans erreur bloquante ; aucun secret dans le client ni le repo. · *code et tests faits en V1.12 (`supabase/functions/llm/chaine.test.ts` : 429 et 503 sur chacun des 6 modèles, délai, JSON invalide, 400/401, réseau coupé, tout en échec ; `src/lib/ia.test.ts` : l'appli reçoit `null`, jamais d'exception) ; essai réel depuis Réglages (« Essai IA », visible en session de test) à faire*
+- **IA0 — Brique** : bascule testée en simulant 429 puis 503 sur chaque modèle de la chaîne ; échec complet sans erreur bloquante ; aucun secret dans le client ni le repo. · *code et tests faits en V1.12 (`supabase/functions/llm/chaine.test.ts` : 429 et 503 sur chacun des 6 modèles, délai, JSON invalide, 400/401, réseau coupé, tout en échec ; `src/lib/ia.test.ts` : l'appli reçoit `null`, jamais d'exception) ; essai réel depuis Réglages (« Essai IA », visible en session de test) fait le 25/11 : texte et image OK, bascule observée une fois en vrai*
 - **IA1 — Saisie en langage naturel** : « on a fait la salle de bain à fond » → cartes de cases à cocher parmi les tâches existantes (la liste avec ids est fournie au modèle), ou carte de nouvelle tâche (pièce, rythme, durée). 3 taps au maximum : écrire, envoyer, OK.
 - **IA2 — Tâches du jour** : le LLM transforme « j'ai 20 min, Laeti rentre à 18 h » en paramètres (minutes, pièces à éviter) ; le **classement est fait par le code** (retard, durée, refus récents). Sans IA, un curseur de durée prend le relais.
 - **IA3 — Revue du journal** : le journal est agrégé en SQL (retards, refus, rythmes modifiés, doublons probables) ; le LLM ne reçoit pas les lignes brutes, formule des propositions et juge les cas ambigus. Résultat mis en cache 7 jours. À lancer seulement après F1 et au moins 2 semaines de journal propre.
@@ -221,6 +221,6 @@ Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 - [x] Copie de sécurité avant migration F4 (`menage_sauvegarde`, tables `*_20261125`), comptage avant/après identique : F4 lancée le 25/11 (56 → 54 tâches, historique 114 → 114)
 - [ ] Champ `quick` migré (`2026-11-25_j1_quick.sql`, fait le 25/11), puis durées des 8 tâches de Laeti restaurées après son accord (`2026-11-25_j1_durees_a_valider.sql`, Q8)
 - [x] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0 (lancé le 25/11), avant toute mise en ligne de l'IA
-- [x] Bascule 429 / 503 testée sur chaque modèle (IA0, tests simulés le 25/11) ; essai réel avec les vraies clés à faire
+- [x] Bascule 429 / 503 testée sur chaque modèle (IA0, tests simulés le 25/11) ; essai réel avec les vraies clés fait le 25/11
 - [x] Aucun secret dans le repo ni dans le client (vérifié le 25/11 : code et build)
 - [ ] SPEC.md à jour dans le même commit que chaque jalon
