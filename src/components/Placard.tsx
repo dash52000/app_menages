@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { besoinsDe } from '../lib/fiches.ts';
+import { aujourdhui } from '../lib/dates.ts';
+import { pasEncoreAuxCourses, tachesPourProduit, verifieDepuis } from '../lib/placard.ts';
 import { ETATS, FAMILLES, ICONES_PRODUITS, PRODUITS, type EtatProduit } from '../lib/produits.ts';
 import { estSaisonniere } from '../lib/catalogue.ts';
 import { normaliser } from '../lib/normalise.ts';
@@ -15,6 +16,7 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
   const [detail, setDetail] = useState<Produit | null>(null);
   const [envois, setEnvois] = useState<Set<string>>(new Set());
   const [verification, setVerification] = useState(false);
+  const [toutEnCours, setToutEnCours] = useState(false);
 
   if (!maison.base15) {
     return (
@@ -66,6 +68,24 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
     });
   };
 
+  /** Tout ce qui est bas ou fini et pas encore sur la liste, en un tap (jamais de relance). */
+  const toutAuxCourses = async () => {
+    const liste = pasEncoreAuxCourses(maison.produits);
+    setToutEnCours(true);
+    let ajoutes = 0;
+    let erreurs = 0;
+    for (const x of liste) {
+      const r = await maison.ajouterAuxCourses(x, 'placard');
+      if (r === 'ajoute') ajoutes += 1;
+      if (r === 'erreur') erreurs += 1;
+    }
+    setToutEnCours(false);
+    informer({
+      texte: erreurs ? 'Pas de réseau : réessaie plus tard.' : ajoutes ? `${ajoutes} produit${ajoutes > 1 ? 's' : ''} ajouté${ajoutes > 1 ? 's' : ''} aux courses` : 'Déjà tout sur la liste',
+    });
+  };
+  const jour = aujourdhui();
+
   const changer = (x: Produit) => {
     const suivant = ETATS[x.etat].suivant;
     maison.changerEtatProduit(x, suivant, 'placard');
@@ -80,7 +100,10 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
         <Illus nom={x.icone} taille={36} />
         <span>
           <strong>{x.nom}</strong>
-          {x.etat !== 'ok' && x.courses_le && <span className="discret petit">Sur la liste de courses</span>}
+          <span className="discret petit">
+            {x.etat !== 'ok' && x.courses_le ? 'Sur la liste de courses · ' : ''}
+            {verifieDepuis(x.maj_le, jour)}
+          </span>
         </span>
       </button>
       {x.etat !== 'ok' && !x.courses_le && (
@@ -105,6 +128,11 @@ export function Placard({ maison, informer }: { maison: Maison; informer: (m: Me
         <section className="bloc">
           <h2 className="titre-section">À racheter · {aRacheter.length}</h2>
           <ul className="liste-placard">{aRacheter.map(ligne)}</ul>
+          {pasEncoreAuxCourses(maison.produits).length > 0 && (
+            <button className="bouton-secondaire large" disabled={toutEnCours} onClick={() => void toutAuxCourses()}>
+              {toutEnCours ? 'Ajout…' : `Tout ajouter aux courses (${pasEncoreAuxCourses(maison.produits).length})`}
+            </button>
+          )}
         </section>
       )}
       <section className="bloc">
@@ -296,15 +324,7 @@ function FeuilleProduit({
 }) {
   const [nom, setNom] = useState(produit.nom);
   const catalogue = PRODUITS.find((x) => x.cle === produit.cle);
-  const utilisePour = useMemo(
-    () =>
-      maison.taches.filter((t) =>
-        besoinsDe(t)
-          .flat()
-          .some((r) => r === produit.id || (produit.cle !== null && r === produit.cle)),
-      ),
-    [maison.taches, produit],
-  );
+  const utilisePour = useMemo(() => tachesPourProduit(produit, maison.taches), [maison.taches, produit]);
 
   return (
     <Feuille titre={produit.nom} onFermer={onFermer}>
@@ -321,6 +341,12 @@ function FeuilleProduit({
             </button>
           ))}
         </div>
+      </div>
+      <div className="bloc">
+        <p className="discret">{verifieDepuis(produit.maj_le, aujourdhui())}</p>
+        <button className="bouton-secondaire" onClick={() => maison.verifierProduit(produit)}>
+          Je viens de vérifier
+        </button>
       </div>
       {utilisePour.length > 0 && (
         <div className="bloc">

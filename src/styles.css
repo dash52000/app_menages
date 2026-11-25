@@ -1886,3 +1886,25 @@ button.carte-haut:active {
   gap: 8px;
   flex: none;
 }
+
+/* ---------- V1.10 : placard utile ---------- */
+
+.bouton-etat {
+  flex: none;
+  align-self: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--encre-douce);
+  box-shadow: inset 0 0 0 1.5px var(--trait);
+  background: transparent;
+}
+
+.bouton-etat:active {
+  transform: scale(0.96);
+}
+
+.besoin-texte .discret.petit + .discret.petit {
+  display: block;
+}

@@ -802,6 +802,15 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     [executer, moi, noter],
   );
 
+  /** « Je viens de vérifier » : l'état est bon, on en garde la date (rien d'autre ne change). */
+  const verifierProduit = useCallback(
+    (x: Produit) => {
+      executer({ table: 'menage_produits', type: 'update', id: x.id, valeurs: { maj_par: moi, maj_le: new Date().toISOString() } });
+      noter('produit_verifie', { produit: x.nom, etat: x.etat });
+    },
+    [executer, moi, noter],
+  );
+
   /** Ajoute un produit au placard (du catalogue par sa clé, ou un produit maison). */
   const ajouterProduit = useCallback(
     (n: { cle?: string | null; nom: string; icone: string; etat?: EtatProduit }, depuis: string): Produit => {
@@ -940,6 +949,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     supprimerTache,
     configurerPlacard,
     changerEtatProduit,
+    verifierProduit,
     ajouterProduit,
     modifierProduit,
     supprimerProduit,

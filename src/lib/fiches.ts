@@ -172,7 +172,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Clayettes en verre froides : pas d’eau très chaude d’un coup, le choc peut les fendre.'],
   },
   'Détartrer la bouilloire': {
-    besoins: [['acide-citrique', 'vinaigre']],
+    besoins: [['detartrant-cafe', 'acide-citrique', 'vinaigre']],
     etapes: [
       'Remplir à moitié d’eau avec une à deux cuillères à soupe d’acide citrique (ou moitié eau, moitié vinaigre blanc).',
       'Faire chauffer, puis laisser agir 30 minutes, bouilloire éteinte.',

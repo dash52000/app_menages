@@ -2,7 +2,7 @@
 
 Le suivi du ménage à deux, pour Damien et Laeti. Web app installable (PWA) sur iPhone et Android, synchronisée en temps réel via Supabase, hébergée sur GitHub Pages. Nom provisoire : il se change dans `src/config.ts`, `index.html` et `vite.config.ts`.
 
-Ce dépôt contient la **V1.9** :
+Ce dépôt contient la **V1.10** :
 
 - **Configuration en 5 minutes** : on coche ses pièces, l'appli propose les tâches courantes avec un rythme et une durée par défaut.
 - **Le check du jour** : 5 tâches au plus, les petites victoires d'abord, quatre boutons (Fait, Fait par l'autre, Demain, Je prends). Un check manqué se rattrape au suivant (« Depuis mardi, qu'est-ce qui a été fait ? »), avec « Changer le jour » après coup.
@@ -46,6 +46,13 @@ Nouveautés de la **V1.9** (jalon J1 : refus, tâches de fond, Quick, parcours d
 - **Quick séparé de la durée** : un interrupteur dans la fiche de tâche. Les 8 tâches que Laeti avait passées à 1 min pourront retrouver leur vraie durée sans quitter « J'ai 1 min ».
 - **Catalogue calé sur les réglages de Laeti** (rythmes), sans doublon « plan de travail ».
 - **« Fait par l'autre » en un tap** dans les pièces : un rond à l'initiale de l'autre profil à côté du ✓.
+
+Nouveautés de la **V1.10** (jalon J2 : placard utile), sans mise à jour de la base :
+
+- **« Il en reste peu » depuis la fiche d'une tâche** : un tap sur le produit qu'on utilise (puis « Il n'y en a plus »), avec « Aux courses » proposé dans le bandeau.
+- **Depuis quand c'est vérifié** : chaque produit du placard dit « Vérifié il y a 3 j » ; « Je viens de vérifier » dans sa fiche remet la date à aujourd'hui sans changer son état.
+- **Courses sans relance** : « À racheter » regroupe les produits bas ou finis, et « Tout ajouter aux courses » les envoie d'un coup dans Panier (seulement ceux qui n'y sont pas déjà).
+- **Détartrant cafetière** relié à la fiche de la bouilloire (visible seulement s'il est au placard).
 
 ### Mettre la base à jour (V1.9, après la V1.8)
 
@@ -114,6 +121,7 @@ Table `menage_journal` (un événement par ligne, `details` en JSON), exportable
 | `placard_configure`, `produit_etat`, `produit_cree`, `produit_modifie`, `produit_supprime` | produit, état avant et après, famille, origine (catalogue, recherche, libre, poêle) | Rythme de consommation, produits manquants au catalogue |
 | `ajout_courses` | produit, résultat (ajouté, déjà sur la liste, erreur), depuis | Le lien avec Panier sert-il |
 | `correction_auteur` | tâche | Le ✓ = moi est-il le bon réglage par défaut |
+| `produit_verifie` | produit, état | Quels produits sont vérifiés, à quel rythme (V1.10) |
 | `piece_pause` | pièce, arrêt ou marche, jours d'arrêt | Saison de chauffe réelle du poêle |
 | `invitation`, `export` | type | Usages annexes |
 
