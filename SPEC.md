@@ -1,6 +1,6 @@
 # SPEC — Coup de frais
 
-Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.11.0 (J0 à J2 en ligne, migrations F4 et `quick` passées ; J3 sécurité en cours) · Fiche mise à jour : 25/11/2026
+Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.11.0 (J0 à J2 en ligne, migrations F4, `quick` et J3 sécurité passées ; IA0 en cours) · Fiche mise à jour : 25/11/2026
 À lire d'abord : `SOCLE.md` (planchers et conventions). Cette fiche ne répète pas le socle.
 
 ---
@@ -109,7 +109,7 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 - Auteur par défaut = profil connecté ; « fait par l'autre » en 1 tap : un second rond coloré, à l'initiale de l'autre profil, à côté du ✓ de chaque ligne de pièce (l'ancien « C'était Laeti ? » reste après un ✓).
 - Taux de correction d'auteur sous 10 % sur 2 semaines.
 
-## 8. Sécurité · *relue le 25/11 (J3) ; correctif à lancer après déploiement de la 1.11.0*
+## 8. Sécurité · *relue le 25/11 (J3) ; correctif lancé en prod le 25/11 après déploiement de la 1.11.0*
 
 **Audit du 25/11** (règles en base, fonctions, advisors Supabase sécurité et performance)
 - Toutes les tables `menage_*` ont la RLS ; seules les identités connectées (`authenticated`, y compris anonymes) voient des lignes, et seulement celles de leur foyer via `menage_mon_foyer()`. `menage_membres` ne s'écrit que par les fonctions de création et de jonction.
@@ -126,6 +126,8 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 - Essai à blanc le 25/11 dans une transaction annulée : 6e code faux bloqué, 4e création bloquée, bon code accepté, `anon` refusé, téléphone sans foyer voit 0 tâche, membre voit 54 tâches ; comptages identiques avant/après (foyers 1, profils 2, membres 3, pièces 9, tâches 54, historique 114, journal 830, produits 18).
 
 **Ordre de mise en ligne** : déployer l'appli 1.11.0 (écran d'arrivée), puis lancer la migration. Les téléphones déjà rattachés ne voient aucune différence.
+
+**Mise en prod du 25/11** : migration `j3_securite` appliquée après un nouvel essai à blanc sur l'état du jour. Comptages avant = après : foyers 1, profils 2, membres 3, pièces 9, tâches 54, historique 114, produits 18, journal 850. Contrôles : 10 règles réécrites avec `(select …)`, 0 droit de table pour `anon`, `anon` ne peut plus exécuter les fonctions de foyer ; vérification en transaction annulée : un membre voit ses 54 tâches, un code faux renvoie `code_inconnu` et laisse une trace. Advisors après migration : plus d'alerte « RLS réévaluée par ligne » sur `menage_*` ; restent les alertes voulues (connexions anonymes, fonctions `security definer`, RLS sans règle sur `menage_tentatives` et `menage_sauvegarde`) et des clés étrangères non indexées en INFO sur de petites tables (sans effet à cette taille). Les alertes des autres applis du projet (Panier, Chevet) sont hors périmètre.
 
 **Reste à faire en J3** : définir comment la fonction `llm` identifie le foyer appelant (voir §9).
 
@@ -209,7 +211,7 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 - [ ] J0 à J2 livrés (PR #2 mergée le 25/11) et vérifiés sur le journal (mesures du §4 recalculées hors tests)
 - [x] Copie de sécurité avant migration F4 (`menage_sauvegarde`, tables `*_20261125`), comptage avant/après identique : F4 lancée le 25/11 (56 → 54 tâches, historique 114 → 114)
 - [ ] Champ `quick` migré (`2026-11-25_j1_quick.sql`, fait le 25/11), puis durées des 8 tâches de Laeti restaurées après son accord (`2026-11-25_j1_durees_a_valider.sql`, Q8)
-- [ ] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0, avant toute mise en ligne de l'IA
+- [x] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0 (lancé le 25/11), avant toute mise en ligne de l'IA
 - [ ] Bascule 429 / 503 testée sur chaque modèle (IA0)
 - [ ] Aucun secret dans le repo ni dans le client
 - [ ] SPEC.md à jour dans le même commit que chaque jalon
