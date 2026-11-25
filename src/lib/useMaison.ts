@@ -10,6 +10,7 @@ import { CLES, ecrire, lire } from './stockage.ts';
 import { ajouterJours, aujourdhui, ecart, type Jour } from './dates.ts';
 import { dateApresReprise, derniereFoisInitiale } from './fraicheur.ts';
 import { cleFiche, ficheDe } from './fiches.ts';
+import { detailsMarques } from './journal.ts';
 import { normaliser } from './normalise.ts';
 import { PRODUITS, emojiPour, type EtatProduit } from './produits.ts';
 import type { Action, Foyer, Membre, Piece, Produit, Profil, Tache } from './types.ts';
@@ -46,7 +47,11 @@ interface Cache extends Etat {
   foyerId: string;
   base15?: boolean;
   base16?: boolean;
+  baseRecente?: boolean;
 }
+
+/** Une session de test s'éteint d'elle-même au bout de ce nombre d'heures. */
+export const DUREE_TEST_H = 3;
 
 const VIDE: Etat = { foyer: null, profils: [], pieces: [], taches: [], produits: [] };
 
@@ -64,6 +69,12 @@ const COLONNES_15 = ['fiche', 'note', 'produits'] as const;
 function tableAbsente(e: { code?: string; message?: string } | null): boolean {
   return Boolean(e && (e.code === 'PGRST205' || e.code === '42P01' || /menage_produits/.test(e.message ?? '')));
 }
+
+/**
+ * Colonnes de `menage_taches` ajoutées depuis la V1.7 (schema.sql à recoller) :
+ * retirées des envois tant que la base n'est pas à jour.
+ */
+export const COLONNES_RECENTES = ['fiche_id', 'quick', 'refusee_le', 'fond_propose_le'] as const;
 
 /** Colonne ajoutée en V1.6 (interrupteur En marche / À l'arrêt d'une pièce). */
 const COLONNES_16 = ['en_pause_depuis'] as const;
@@ -87,6 +98,8 @@ export interface NouvelleTache {
   duree: number;
   note?: string | null;
   produits?: string[] | null;
+  /** Proposée par « J'ai 1 min » ; absent = on se fie à la durée. */
+  quick?: boolean | null;
 }
 
 export interface NouvellePiece {
@@ -133,7 +146,14 @@ function appliquer(e: Etat, op: Operation): Etat {
   return suite;
 }
 
-async function envoyer(op: Operation, base15: boolean, base16: boolean): Promise<'ok' | 'reseau' | 'refus' | 'colonne'> {
+const sansValeur = (v: Ligne | Ligne[] | undefined) => !Array.isArray(v) && (!v || !Object.keys(v).length);
+
+async function envoyer(
+  op: Operation,
+  base15: boolean,
+  base16: boolean,
+  baseRecente: boolean,
+): Promise<'ok' | 'reseau' | 'refus' | 'colonne'> {
   const essai = async (valeurs: Ligne | Ligne[] | undefined) => {
     const q = supabase.from(op.table);
     return op.type === 'insert'
@@ -147,11 +167,22 @@ async function envoyer(op: Operation, base15: boolean, base16: boolean): Promise
     const piece = op.table === 'menage_pieces';
     let valeurs = op.valeurs;
     if (tache && !base15) valeurs = sansColonnes15(valeurs);
+    if (tache && !baseRecente) valeurs = sansColonnes(valeurs, COLONNES_RECENTES);
     if (piece && !base16) valeurs = sansColonnes(valeurs, COLONNES_16);
     if (op.type === 'update' && valeurs && !Array.isArray(valeurs) && !Object.keys(valeurs).length) return 'ok';
     let r = await essai(valeurs);
-    // Colonne inconnue : la base n'est pas à jour, on renvoie sans les champs récents.
-    if (r.error?.code === 'PGRST204' && tache) r = await essai(sansColonnes15(op.valeurs));
+    // Colonne inconnue : la base n'est pas à jour, on renvoie sans les champs récents,
+    // puis (si ça ne suffit pas) sans ceux de la V1.5.
+    if (r.error?.code === 'PGRST204' && tache) {
+      const sansRecentes = sansColonnes(op.valeurs, COLONNES_RECENTES);
+      if (op.type === 'update' && sansValeur(sansRecentes)) return 'ok';
+      r = await essai(sansRecentes);
+      if (r.error?.code === 'PGRST204') {
+        const reste = sansColonnes(op.valeurs, [...COLONNES_RECENTES, ...COLONNES_15]);
+        if (op.type === 'update' && sansValeur(reste)) return 'ok';
+        r = await essai(reste);
+      }
+    }
     if (r.error?.code === 'PGRST204' && piece) {
       const reste = sansColonnes(op.valeurs, COLONNES_16);
       // Rien d'autre à enregistrer (mise à l'arrêt) : la base n'est pas à jour, on le signale.
@@ -253,6 +284,13 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   base16Ref.current = base16;
   const base15Ref = useRef(base15);
   base15Ref.current = base15;
+  // La base a-t-elle les colonnes ajoutées depuis la V1.7 (clé de fiche stable…) ?
+  const [baseRecente, setBaseRecente] = useState<boolean>(() => lire<Cache | null>(CLES.cache, null)?.baseRecente ?? true);
+  const baseRecenteRef = useRef(baseRecente);
+  baseRecenteRef.current = baseRecente;
+  // « Session de test » : les événements du journal sont marqués (details.test) pour être écartés des mesures.
+  const finTest = useRef<number>(lire<number | null>(CLES.test, null) ?? 0);
+  const [enTest, setEnTest] = useState(() => finTest.current > Date.now());
   const [statut, setStatut] = useState<Statut>('chargement');
   const [enAttente, setEnAttente] = useState(() => lire<Operation[]>(CLES.fileAttente, []).length);
 
@@ -269,8 +307,15 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
 
   // Cache : l'appli s'ouvre sur le dernier état connu, même sans réseau.
   useEffect(() => {
-    if (etat.foyer) ecrire(CLES.cache, { ...etat, foyerId, base15, base16 } satisfies Cache);
-  }, [etat, foyerId, base15, base16]);
+    if (etat.foyer) ecrire(CLES.cache, { ...etat, foyerId, base15, base16, baseRecente } satisfies Cache);
+  }, [etat, foyerId, base15, base16, baseRecente]);
+
+  // La session de test s'éteint toute seule : on ne l'oublie pas allumée.
+  useEffect(() => {
+    if (!enTest) return;
+    const id = window.setTimeout(() => setEnTest(false), Math.max(0, finTest.current - Date.now()));
+    return () => window.clearTimeout(id);
+  }, [enTest]);
 
   const sauverFile = () => {
     ecrire(CLES.fileAttente, file.current.length ? file.current : null);
@@ -287,7 +332,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     const envoi = Promise.resolve().then(async () => {
       try {
         while (file.current.length) {
-          const r = await envoyer(file.current[0], base15Ref.current, base16Ref.current);
+          const r = await envoyer(file.current[0], base15Ref.current, base16Ref.current, baseRecenteRef.current);
           if (r === 'reseau') {
             setStatut('hors-ligne');
             return false;
@@ -328,7 +373,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
 
   const charger = useCallback(async () => {
     if (!(await vider())) return; // pas de réseau : on garde l'écran tel quel
-    const [f, p, pi, t, pr, colonne16] = await Promise.all([
+    const [f, p, pi, t, pr, colonne16, colonneRecente] = await Promise.all([
       supabase.from('menage_foyers').select('*').eq('id', foyerId).maybeSingle(),
       supabase.from('menage_profils').select('*').eq('foyer_id', foyerId).order('cree_le', { ascending: true }),
       supabase.from('menage_pieces').select('*').eq('foyer_id', foyerId).order('ordre', { ascending: true }),
@@ -336,6 +381,8 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
       supabase.from('menage_produits').select('*').eq('foyer_id', foyerId).order('cree_le', { ascending: true }),
       // Sonde de la colonne V1.6, même sans aucune pièce.
       supabase.from('menage_pieces').select('id, en_pause_depuis').eq('foyer_id', foyerId).limit(1),
+      // Sonde des colonnes récentes de menage_taches (schema.sql V1.8 et suivants).
+      supabase.from('menage_taches').select(['id', ...COLONNES_RECENTES].join(', ')).eq('foyer_id', foyerId).limit(1),
     ]);
     const produitsAbsents = tableAbsente(pr.error);
     if (f.error || p.error || pi.error || t.error || (pr.error && !produitsAbsents)) {
@@ -347,6 +394,12 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     const sans16 = Boolean(e16 && (e16.code === '42703' || e16.code === 'PGRST204' || /en_pause_depuis/.test(e16.message ?? '')));
     setBase16(!sans16);
     base16Ref.current = !sans16;
+    const eRecente = colonneRecente.error as { code?: string; message?: string } | null;
+    const sansRecente = Boolean(
+      eRecente && (eRecente.code === '42703' || eRecente.code === 'PGRST204' || COLONNES_RECENTES.some((c) => (eRecente.message ?? '').includes(c))),
+    );
+    setBaseRecente(!sansRecente);
+    baseRecenteRef.current = !sansRecente;
     setDetailBase(produitsAbsents ? `${pr.error?.code ?? ''} ${pr.error?.message ?? ''}`.trim() : null);
     if (!f.data) {
       setStatut('introuvable');
@@ -441,12 +494,30 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
           profil_id: moi,
           evenement,
           tache_id: tacheId,
-          details,
+          details: detailsMarques(details, finTest.current > Date.now()),
           cree_le: new Date().toISOString(), // heure réelle, même si l'envoi attend le réseau
         },
       });
     },
     [executer, foyerId, moi],
+  );
+
+  /** Allume ou éteint la session de test de ce téléphone (éteinte d'office après quelques heures). */
+  const basculerTest = useCallback(
+    (actif: boolean) => {
+      if (actif) {
+        finTest.current = Date.now() + DUREE_TEST_H * 3_600_000;
+        ecrire(CLES.test, finTest.current);
+        setEnTest(true);
+        noter('session_test', { actif: true });
+      } else {
+        noter('session_test', { actif: false }); // marqué test lui aussi : c'est la fin de la session
+        finTest.current = 0;
+        ecrire(CLES.test, null);
+        setEnTest(false);
+      }
+    },
+    [noter],
   );
 
   // ---------- Actions sur les tâches ------------------------------------------
@@ -525,16 +596,38 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   );
 
   /**
+   * « Autre proposition » : la tâche passe son tour 48 h (partout, sur les deux téléphones).
+   * Rien d'autre ne change : ni report, ni fraîcheur.
+   */
+  const refuser = useCallback(
+    (t: Tache) => {
+      majTache(t.id, { refusee_le: new Date().toISOString() });
+    },
+    [majTache],
+  );
+
+  /** Tâche de fond proposée dans un check : la rotation s'en souvient (une écriture par jour au plus). */
+  const marquerFond = useCallback(
+    (tacheId: string) => {
+      const jour = aujourdhui();
+      const t = etatRef.current.taches.find((x) => x.id === tacheId);
+      if (!t || t.fond_propose_le === jour) return;
+      majTache(tacheId, { fond_propose_le: jour });
+    },
+    [majTache],
+  );
+
+  /**
    * Fin d'un check : mémorise le jour (rattrapage et futur rappel) et le journalise.
    * Sans détails (une Quick faite avec « J'ai 1 min »), le jour est validé sans journal.
    */
   const terminerCheck = useCallback(
-    (details?: Ligne) => {
+    (details?: Ligne, evenement: 'check_termine' | 'check_quitte' = 'check_termine') => {
       const jour = aujourdhui();
       if (etatRef.current.foyer?.dernier_check !== jour) {
         executer({ table: 'menage_foyers', type: 'update', id: foyerId, valeurs: { dernier_check: jour } });
       }
-      if (details) noter(details.vide ? 'check_vide' : 'check_termine', details);
+      if (details) noter(details.vide ? 'check_vide' : evenement, details);
     },
     [executer, foyerId, noter],
   );
@@ -558,6 +651,8 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
           rythme_jours: t.rythme,
           duree_min: t.duree,
           fiche: cleFiche(t.nom),
+          fiche_id: cleFiche(t.nom),
+          quick: t.quick ?? null,
           note: t.note ?? null,
           produits: t.produits ?? null,
           derniere_fois: derniereFoisInitiale(index++, t.rythme, jour),
@@ -612,6 +707,8 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
           rythme_jours: n.rythme,
           duree_min: n.duree,
           fiche: cleFiche(n.nom),
+          fiche_id: cleFiche(n.nom),
+          quick: n.quick ?? null,
           note: n.note ?? null,
           produits: n.produits ?? null,
           derniere_fois: derniereFoisInitiale(etatRef.current.taches.length, n.rythme, aujourdhui()),
@@ -629,15 +726,18 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   );
 
   const modifierTache = useCallback(
-    (t: Tache, champs: Partial<Pick<Tache, 'nom' | 'icone' | 'rythme_jours' | 'duree_min' | 'note' | 'produits'>>) => {
+    (t: Tache, champs: Partial<Pick<Tache, 'nom' | 'icone' | 'rythme_jours' | 'duree_min' | 'note' | 'produits' | 'quick'>>) => {
       const pareil = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
       const changes = Object.fromEntries(
         Object.entries(champs).filter(([k, v]) => !pareil(t[k as keyof Tache], v)),
       ) as Partial<Tache>;
       // La fiche suit la tâche même si on la renomme.
-      if (changes.nom && !t.fiche) {
+      if (changes.nom && !t.fiche_id && !t.fiche) {
         const f = cleFiche(t.nom);
-        if (f) changes.fiche = f;
+        if (f) {
+          changes.fiche_id = f;
+          changes.fiche = f;
+        }
       }
       if (!Object.keys(changes).length) return;
       executer({ table: 'menage_taches', type: 'update', id: t.id, valeurs: changes });
@@ -698,6 +798,15 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
         valeurs: { etat, maj_par: moi, maj_le: new Date().toISOString(), ...(etat === 'ok' ? { courses_le: null } : {}) },
       });
       noter('produit_etat', { produit: x.nom, avant: x.etat, apres: etat, depuis });
+    },
+    [executer, moi, noter],
+  );
+
+  /** « Je viens de vérifier » : l'état est bon, on en garde la date (rien d'autre ne change). */
+  const verifierProduit = useCallback(
+    (x: Produit) => {
+      executer({ table: 'menage_produits', type: 'update', id: x.id, valeurs: { maj_par: moi, maj_le: new Date().toISOString() } });
+      noter('produit_verifie', { produit: x.nom, etat: x.etat });
     },
     [executer, moi, noter],
   );
@@ -818,6 +927,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     ...etat,
     base15,
     base16,
+    baseRecente,
     detailBase,
     statut,
     enAttente,
@@ -825,7 +935,11 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     autres,
     charger,
     noter,
+    enTest,
+    basculerTest,
     agir,
+    refuser,
+    marquerFond,
     terminerCheck,
     creerPieces,
     modifierPiece,
@@ -835,6 +949,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     supprimerTache,
     configurerPlacard,
     changerEtatProduit,
+    verifierProduit,
     ajouterProduit,
     modifierProduit,
     supprimerProduit,

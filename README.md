@@ -2,7 +2,7 @@
 
 Le suivi du ménage à deux, pour Damien et Laeti. Web app installable (PWA) sur iPhone et Android, synchronisée en temps réel via Supabase, hébergée sur GitHub Pages. Nom provisoire : il se change dans `src/config.ts`, `index.html` et `vite.config.ts`.
 
-Ce dépôt contient la **V1.7** :
+Ce dépôt contient la **V1.10** :
 
 - **Configuration en 5 minutes** : on coche ses pièces, l'appli propose les tâches courantes avec un rythme et une durée par défaut.
 - **Le check du jour** : 5 tâches au plus, les petites victoires d'abord, quatre boutons (Fait, Fait par l'autre, Demain, Je prends). Un check manqué se rattrape au suivant (« Depuis mardi, qu'est-ce qui a été fait ? »), avec « Changer le jour » après coup.
@@ -32,7 +32,45 @@ Nouveautés de la **V1.7** :
 - **« Autre » sur chaque carte du check** : la carte est remplacée par la tâche suivante (une due pas encore vue, sinon la plus avancée des autres), sans rien reporter. Après trois, le bouton ouvre la liste complète.
 - **La maison qui s'éclaire** : sous la jauge, chaque pièce s'allume dès qu'une de ses tâches est faite aujourd'hui, et tout repart dans la pénombre le lendemain. Une pastille pour le foyer, une pour chacun.
 
-Aucune mise à jour de la base n'est nécessaire pour la V1.7.
+Nouveautés de la **V1.8** (jalon J0 : journal fiable, données propres, export) :
+
+- **Journal fiable** : quitter le check sans rien faire écrit `check_vu`, après au moins une action `check_quitte`, et `check_termine` quand tout est traité. Chaque check garde les ids des tâches proposées. `check_abandonne` n'existe plus.
+- **Session de test** (Réglages) : un interrupteur marque les événements du moment (`details.test`) et s'éteint seul après 3 h. `supabase/mesures.sql` recalcule les mesures du SPEC hors tests.
+- **Export CSV** de tâches, produits, historique et journal (ids stables), en plus de la sauvegarde JSON, dans Réglages.
+- **Données propres** : une fiche est liée à sa tâche par `fiche_id` (renommer ne la casse plus), les produits d'une tâche sont référencés par id, et créer une tâche au nom proche d'une existante affiche un avertissement doux, jamais bloquant.
+
+Nouveautés de la **V1.9** (jalon J1 : refus, tâches de fond, Quick, parcours de Laeti) :
+
+- **Un refus se retient 48 h** : une tâche passée avec « Autre » (dans le check ou dans « J'ai 1 min ») n'est pas reproposée avant 48 h, sur les deux téléphones. La liste complète des Quick, elle, les garde.
+- **Tâches de fond sans mur rouge** : au plus une tâche en retard de plus de 2× son rythme par check, choisie à tour de rôle, avec une étiquette grise « Tâche de fond ». Pas de compteur de jours, « Demain » reste sans pénalité.
+- **Quick séparé de la durée** : un interrupteur dans la fiche de tâche. Les 8 tâches que Laeti avait passées à 1 min pourront retrouver leur vraie durée sans quitter « J'ai 1 min ».
+- **Catalogue calé sur les réglages de Laeti** (rythmes), sans doublon « plan de travail ».
+- **« Fait par l'autre » en un tap** dans les pièces : un rond à l'initiale de l'autre profil à côté du ✓.
+
+Nouveautés de la **V1.10** (jalon J2 : placard utile), sans mise à jour de la base :
+
+- **« Il en reste peu » depuis la fiche d'une tâche** : un tap sur le produit qu'on utilise (puis « Il n'y en a plus »), avec « Aux courses » proposé dans le bandeau.
+- **Depuis quand c'est vérifié** : chaque produit du placard dit « Vérifié il y a 3 j » ; « Je viens de vérifier » dans sa fiche remet la date à aujourd'hui sans changer son état.
+- **Courses sans relance** : « À racheter » regroupe les produits bas ou finis, et « Tout ajouter aux courses » les envoie d'un coup dans Panier (seulement ceux qui n'y sont pas déjà).
+- **Détartrant cafetière** relié à la fiche de la bouilloire (visible seulement s'il est au placard).
+
+### Mettre la base à jour (V1.9, après la V1.8)
+
+1. SQL Editor : recoller `supabase/schema.sql` (ajoute `quick`, `refusee_le`, `fond_propose_le` ; `v19_ok` doit afficher `true`).
+2. SQL Editor : `supabase/migrations/2026-11-25_j1_quick.sql` (pose `quick` sur les tâches d'1 min et sur les 8 tâches de Laeti ; ne change aucune durée).
+3. Plus tard, **après accord de Laeti** : `supabase/migrations/2026-11-25_j1_durees_a_valider.sql` (rend leur durée aux 8 tâches ; ne touche qu'à celles encore à 1 min).
+
+Sans ces étapes, l'appli fonctionne comme avant ; les refus et la rotation ne se retiennent alors que sur le téléphone.
+
+### Mettre la base à jour (V1.8)
+
+Dans cet ordre, une seule fois :
+
+1. Réglages → **Sauvegarde complète (JSON)** : garde le fichier.
+2. SQL Editor : recoller `supabase/schema.sql` → *Run* (ajoute `fiche_id` ; `v18_ok` doit afficher `true`).
+3. SQL Editor : coller `supabase/migrations/2026-11-25_j0_donnees_propres.sql` → *Run*. Elle copie d'abord les tables dans le schéma `menage_sauvegarde`, fusionne les doublons (lessive, plan de travail), corrige « salade de bain », remplit `fiche_id` et passe les produits en ids. Si le comptage de l'historique ou des tâches ne tombe pas juste, tout est annulé. Le dernier tableau affiche le comptage avant / après.
+
+Tant que les étapes 2 et 3 ne sont pas faites, l'appli fonctionne comme avant.
 
 Les nudges (rappel, merci, équilibre, repartir à zéro, mode absence) arrivent en V2 ; les rythmes adaptatifs, le lissage et les tâches saisonnières en V3.
 
@@ -66,7 +104,11 @@ Table `menage_journal` (un événement par ligne, `details` en JSON), exportable
 | --- | --- | --- |
 | `ouverture` | source (`directe`, `retour`, `rappel` en V2), heure, appli installée ou non | Quand et comment on ouvre l'appli |
 | `check_termine` | durée, nombre de tâches, actions par bouton, faites sur l'autre téléphone, ignorées, jours couverts, reprise | Le check tient-il en 15 secondes |
-| `check_abandonne` | durée, actions faites avant de quitter | Où le check décourage |
+| `check_vu` | durée, nombre de tâches, ids proposés | Le check est ouvert puis quitté sans rien faire (V1.8) |
+| `check_quitte` | durée, nombre d'actions, ids proposés | Où le check décourage après un début (V1.8) |
+| `session_test` | actif ou non | Début et fin d'une session de test (V1.8) |
+| `fusion_taches`, `migration_donnees` | tâches gardée et supprimée, comptages | Trace de la migration F4 |
+| `check_abandonne` | (jusqu'à la V1.7) durée, actions | Ancienne mesure, peu fiable : voir `check_vu` et `check_quitte` |
 | `check_vide`, `check_suite` | jours couverts, tâches restantes | Charge réelle de la maison |
 | `bouton_tache` | action, depuis le check, une pièce ou « Autre chose de fait ? », tâche, rythme, décalage de jour | Tâches toujours reportées, rythmes mal calés, tâches faites hors check |
 | `changement_jour`, `annulation` | action, tâche | Erreurs de saisie, rattrapages |
@@ -79,6 +121,7 @@ Table `menage_journal` (un événement par ligne, `details` en JSON), exportable
 | `placard_configure`, `produit_etat`, `produit_cree`, `produit_modifie`, `produit_supprime` | produit, état avant et après, famille, origine (catalogue, recherche, libre, poêle) | Rythme de consommation, produits manquants au catalogue |
 | `ajout_courses` | produit, résultat (ajouté, déjà sur la liste, erreur), depuis | Le lien avec Panier sert-il |
 | `correction_auteur` | tâche | Le ✓ = moi est-il le bon réglage par défaut |
+| `produit_verifie` | produit, état | Quels produits sont vérifiés, à quel rythme (V1.10) |
 | `piece_pause` | pièce, arrêt ou marche, jours d'arrêt | Saison de chauffe réelle du poêle |
 | `invitation`, `export` | type | Usages annexes |
 
@@ -90,7 +133,7 @@ Premiers indicateurs : durée médiane du check, taux de report par tâche, jour
 npm install
 npm run dev              # contre la vraie base
 VITE_MOCK=1 npm run dev  # base factice en mémoire, sans réseau
-npm test                 # fraîcheur, jauge, choix du check, Quick, fiches, produits, export CSV
+npm test                 # fraîcheur, jauge, choix du check, Quick, fiches, produits, journal, doublons, export CSV
 npm run build
 npm run gen:illustrations  # après avoir changé le catalogue (src/lib/catalogue.ts)
 ```

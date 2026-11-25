@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { resoudreBesoin, trouverProduit, type Besoin } from '../lib/fiches.ts';
+import { aujourdhui } from '../lib/dates.ts';
+import { produitDuBesoin, verifieDepuis } from '../lib/placard.ts';
 import { ETATS, PRODUITS_PAR_CLE, estSpecialise } from '../lib/produits.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import { Illus } from './Illus.tsx';
@@ -48,6 +50,8 @@ export function BesoinFiche({
   const [envoi, setEnvoi] = useState<'non' | 'encours' | 'fait'>('non');
   if (!resolu) return null;
   const b: Besoin = resolu;
+  // Le produit qu'on a sous la main : un tap pour dire qu'il en reste peu, sans quitter la fiche.
+  const enMain = produitDuBesoin(b, maison.produits);
   const ideal = infoProduit(b.ideal, maison);
   const choisi = b.choisi ? infoProduit(b.choisi, maison) : null;
   const xIdeal = trouverProduit(b.ideal, maison.produits);
@@ -81,13 +85,33 @@ export function BesoinFiche({
     classe = 'manque';
   }
 
+  const signaler = (etat: 'bas' | 'vide') => {
+    if (!enMain) return;
+    maison.changerEtatProduit(enMain, etat, 'fiche');
+    informer({
+      texte: `${enMain.nom} : ${ETATS[etat].libelle.toLowerCase()}`,
+      action: enMain.courses_le ? undefined : { libelle: 'Aux courses', faire: () => void maison.ajouterAuxCourses(enMain, 'fiche') },
+    });
+  };
+
   return (
     <li className={`besoin ${classe}`}>
       <Illus nom={(choisi ?? ideal).icone} taille={36} />
       <span className="besoin-texte">
         <strong>{(choisi ?? ideal).nom}</strong>
         <span className="discret petit">{statut}</span>
+        {enMain && <span className="discret petit">{verifieDepuis(enMain.maj_le, aujourdhui())}</span>}
       </span>
+      {enMain && enMain.etat === 'ok' && (
+        <button className="bouton-etat" onClick={() => signaler('bas')}>
+          Il en reste peu
+        </button>
+      )}
+      {enMain && enMain.etat === 'bas' && (
+        <button className="bouton-etat" onClick={() => signaler('vide')}>
+          Il n’y en a plus
+        </button>
+      )}
       {classe === 'manque' &&
         (dejaAuxCourses || envoi === 'fait' ? (
           <span className="etiquette">Aux courses ✓</span>

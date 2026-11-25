@@ -38,7 +38,7 @@ export function Configuration({ maison }: { maison: Maison }) {
       choisies.map((p) => ({
         nom: p.nom,
         icone: p.icone,
-        taches: taches[p.cle].filter((t) => t.coche).map((t) => ({ nom: t.nom, icone: t.icone, rythme: t.rythme, duree: t.duree })),
+        taches: taches[p.cle].filter((t) => t.coche).map((t) => ({ nom: t.nom, icone: t.icone, rythme: t.rythme, duree: t.duree, quick: t.quick })),
       })),
     );
     maison.noter('configuration_terminee', {

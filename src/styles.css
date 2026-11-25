@@ -1836,3 +1836,75 @@ button.carte-haut:active {
     transition: none;
   }
 }
+
+/* ---------- V1.8 : session de test, nom proche ---------- */
+
+.etiquette-test {
+  background: var(--soleil-pale, var(--piste));
+  color: var(--encre);
+}
+
+.nom-proche {
+  margin: 6px 0 0;
+  color: var(--encre-douce);
+}
+
+/* ---------- V1.9 : tâche de fond, « fait par l'autre » en un tap, Quick ---------- */
+
+.etiquette-fond {
+  background: var(--piste);
+  color: var(--encre-douce);
+}
+
+.puce-quick {
+  margin-top: 10px;
+}
+
+.coche-autre {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2.5px var(--profil, var(--soleil));
+  color: var(--encre);
+  font-weight: 800;
+  font-size: 1rem;
+  transition: transform 100ms ease;
+}
+
+.coche-autre:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.coche-autre:disabled {
+  background: var(--profil, var(--soleil));
+  opacity: 1;
+}
+
+.ligne-tache .coches {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* ---------- V1.10 : placard utile ---------- */
+
+.bouton-etat {
+  flex: none;
+  align-self: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--encre-douce);
+  box-shadow: inset 0 0 0 1.5px var(--trait);
+  background: transparent;
+}
+
+.bouton-etat:active {
+  transform: scale(0.96);
+}
+
+.besoin-texte .discret.petit + .discret.petit {
+  display: block;
+}

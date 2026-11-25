@@ -172,7 +172,7 @@ const FICHES_PAR_NOM: Record<string, Fiche> = {
     attention: ['Clayettes en verre froides : pas d’eau très chaude d’un coup, le choc peut les fendre.'],
   },
   'Détartrer la bouilloire': {
-    besoins: [['acide-citrique', 'vinaigre']],
+    besoins: [['detartrant-cafe', 'acide-citrique', 'vinaigre']],
     etapes: [
       'Remplir à moitié d’eau avec une à deux cuillères à soupe d’acide citrique (ou moitié eau, moitié vinaigre blanc).',
       'Faire chauffer, puis laisser agir 30 minutes, bouilloire éteinte.',
@@ -528,9 +528,9 @@ export function cleFiche(nom: string): string | null {
   return FICHES[c] ? c : null;
 }
 
-/** La fiche d'une tâche : sa clé enregistrée, sinon son nom. */
-export function ficheDe(t: { nom: string; fiche?: string | null }): Fiche | null {
-  return (t.fiche && FICHES[t.fiche]) || FICHES[normaliser(t.nom)] || null;
+/** La fiche d'une tâche : sa clé stable (fiche_id), l'ancienne clé (fiche), sinon son nom. */
+export function ficheDe(t: { nom: string; fiche_id?: string | null; fiche?: string | null }): Fiche | null {
+  return (t.fiche_id && FICHES[t.fiche_id]) || (t.fiche && FICHES[t.fiche]) || FICHES[normaliser(t.nom)] || null;
 }
 
 // ---------- Produits à prendre, selon ce qu'il y a dans le placard ----------
@@ -585,16 +585,24 @@ export function resoudreBesoin(options: string[], placard: ProduitPlacard[]): Be
   return { ideal, choisi, etatIdeal: pi ? pi.etat : 'absent', etatChoisi };
 }
 
+/**
+ * Remplace les clés de catalogue par les ids des produits du placard (un produit
+ * est référencé par son id seulement). Une référence inconnue reste telle quelle.
+ */
+export function refsEnIds(refs: string[], placard: ProduitPlacard[]): string[] {
+  return [...new Set(refs.map((r) => placard.find((x) => x.id === r)?.id ?? placard.find((x) => x.cle === r)?.id ?? r))];
+}
+
 /** Les besoins à afficher pour une tâche (ceux qui ne sont pas masqués). */
 export function besoinsVisibles(
-  t: { nom: string; fiche?: string | null; produits?: string[] | null },
+  t: { nom: string; fiche_id?: string | null; fiche?: string | null; produits?: string[] | null },
   placard: ProduitPlacard[],
 ): string[][] {
   return besoinsDe(t).filter((o) => resoudreBesoin(o, placard) !== null);
 }
 
 /** Les besoins d'une tâche : ses produits choisis à la main, sinon ceux de sa fiche. */
-export function besoinsDe(t: { nom: string; fiche?: string | null; produits?: string[] | null }): string[][] {
+export function besoinsDe(t: { nom: string; fiche_id?: string | null; fiche?: string | null; produits?: string[] | null }): string[][] {
   if (t.produits && t.produits.length) return t.produits.map((x) => [x]);
   return ficheDe(t)?.besoins ?? [];
 }

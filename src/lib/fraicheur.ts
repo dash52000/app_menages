@@ -15,8 +15,21 @@ export const QUICK_MAX = 1;
 /** « Autre proposition » : au plus trois d'affilée, puis la liste complète. */
 export const MAX_AUTRES = 3;
 
-export function estQuick(t: Pick<Tache, 'duree_min'>): boolean {
-  return t.duree_min <= QUICK_MAX;
+/** Après un refus via « Autre proposition », la tâche n'est pas reproposée pendant 48 h. */
+export const PAUSE_REFUS_H = 48;
+/** Une tâche de fond : en retard de plus de deux fois son rythme. */
+export const SEUIL_FOND = 2;
+
+/** Quick : le champ `quick` quand il existe, sinon la durée (base pas encore à jour). */
+export function estQuick(t: Pick<Tache, 'duree_min'> & { quick?: boolean | null }): boolean {
+  return typeof t.quick === 'boolean' ? t.quick : t.duree_min <= QUICK_MAX;
+}
+
+/** Refusée il y a moins de 48 h : on ne la repropose pas. */
+export function refuseeRecemment(t: Pick<Tache, 'refusee_le'>, maintenant: number = Date.now()): boolean {
+  if (!t.refusee_le) return false;
+  const quand = Date.parse(t.refusee_le);
+  return Number.isFinite(quand) && maintenant - quand < PAUSE_REFUS_H * 3600 * 1000;
 }
 
 function joursDepuis(t: Tache, jour: Jour): number {
@@ -57,6 +70,11 @@ export function urgence(t: Tache, jour: Jour): number {
   return joursDepuis(t, jour) / t.rythme_jours;
 }
 
+/** Tâche de fond : plus de 2× son rythme depuis la dernière fois. */
+export function estDeFond(t: Tache, jour: Jour): boolean {
+  return urgence(t, jour) > SEUIL_FOND;
+}
+
 export function estDue(t: Tache, jour: Jour): boolean {
   if (estFaiteLe(t, jour) || estReportee(t, jour)) return false;
   return 1 - urgence(t, jour) <= SEUIL_DUE + 1e-9;
@@ -83,23 +101,54 @@ export function trierPourCheck(taches: Tache[], jour: Jour): Tache[] {
   });
 }
 
-/** Tâches candidates au check : dues, ou réservées pour aujourd'hui et pas encore faites. */
-export function candidatesCheck(taches: Tache[], jour: Jour): Tache[] {
+/**
+ * Tâches candidates au check : dues, ou réservées pour aujourd'hui et pas encore faites.
+ * Une tâche refusée il y a moins de 48 h attend, sauf si quelqu'un l'a prise (« Je prends »).
+ */
+export function candidatesCheck(taches: Tache[], jour: Jour, maintenant: number = Date.now()): Tache[] {
   return trierPourCheck(
-    taches.filter((t) => estDue(t, jour) || (estReserveeLe(t, jour) && !estFaiteLe(t, jour))),
+    taches.filter((t) =>
+      estReserveeLe(t, jour)
+        ? !estFaiteLe(t, jour)
+        : estDue(t, jour) && !refuseeRecemment(t, maintenant),
+    ),
     jour,
   );
 }
 
-/** Les tâches du check (au plus `max`) et le nombre restant derrière. */
+/**
+ * La tâche de fond du check, choisie par rotation : celle proposée il y a le plus
+ * longtemps (jamais proposée d'abord), puis la plus en retard.
+ */
+export function choisirFond(fonds: Tache[], jour: Jour): Tache | null {
+  const tries = [...fonds].sort(
+    (a, b) =>
+      (a.fond_propose_le ?? '').localeCompare(b.fond_propose_le ?? '') ||
+      urgence(b, jour) - urgence(a, jour) ||
+      a.nom.localeCompare(b.nom, 'fr'),
+  );
+  return tries[0] ?? null;
+}
+
+/**
+ * Les tâches du check (au plus `max`) et le nombre restant derrière.
+ * Au plus une tâche de fond en retard par check ; les autres attendent leur tour.
+ */
 export function selectionCheck(
   taches: Tache[],
   jour: Jour,
   max = MAX_CHECK,
   exclure: ReadonlySet<string> = new Set(),
-): { liste: Tache[]; reste: number } {
-  const c = candidatesCheck(taches, jour).filter((t) => !exclure.has(t.id));
-  return { liste: c.slice(0, max), reste: Math.max(0, c.length - max) };
+  maintenant: number = Date.now(),
+): { liste: Tache[]; reste: number; fond: Tache | null } {
+  const candidates = candidatesCheck(taches, jour, maintenant).filter((t) => !exclure.has(t.id));
+  const fonds = candidates.filter((t) => estDeFond(t, jour) && !estReserveeLe(t, jour));
+  const fond = choisirFond(fonds, jour);
+  const c = candidates.filter((t) => !fonds.includes(t) || t === fond);
+  let liste = c.slice(0, max);
+  // La tâche de fond choisie doit tenir dans le check, même derrière de petites victoires.
+  if (fond && !liste.includes(fond)) liste = [...liste.slice(0, Math.max(0, max - 1)), fond];
+  return { liste, reste: Math.max(0, c.length - liste.length), fond };
 }
 
 /** Faite, reportée ou réservée aujourd'hui : à ne pas reproposer. */
@@ -112,20 +161,32 @@ function horsJeu(t: Tache, jour: Jour): boolean {
  * D'abord les tâches dues pas encore vues, dans l'ordre du check ; s'il n'y en
  * a plus, la plus avancée des autres (sans rien montrer de son retard).
  */
-export function propositionSuivante(taches: Tache[], jour: Jour, exclure: ReadonlySet<string>): Tache | null {
-  const dues = candidatesCheck(taches, jour).filter((t) => !exclure.has(t.id));
+export function propositionSuivante(
+  taches: Tache[],
+  jour: Jour,
+  exclure: ReadonlySet<string>,
+  o: { fondPresent?: boolean; maintenant?: number } = {},
+): Tache | null {
+  const maintenant = o.maintenant ?? Date.now();
+  const permise = (t: Tache) => !exclure.has(t.id) && !(o.fondPresent && estDeFond(t, jour));
+  const dues = candidatesCheck(taches, jour, maintenant).filter(permise);
   if (dues.length) return dues[0];
   const autres = taches
-    .filter((t) => !exclure.has(t.id) && !horsJeu(t, jour))
+    .filter((t) => permise(t) && !horsJeu(t, jour) && !refuseeRecemment(t, maintenant))
     .sort((a, b) => urgence(b, jour) - urgence(a, jour) || a.duree_min - b.duree_min || a.nom.localeCompare(b.nom, 'fr'));
   return autres[0] ?? null;
 }
 
-/** Les tâches Quick à proposer avec « J'ai 1 min », la plus en retard d'abord. */
+/** Les tâches Quick de la liste « J'ai 1 min », la plus en retard d'abord (refusées comprises : on les choisit soi-même). */
 export function quicksDuJour(taches: Tache[], jour: Jour): Tache[] {
   return taches
     .filter((t) => estQuick(t) && !estFaiteLe(t, jour) && !estReportee(t, jour))
     .sort((a, b) => urgence(b, jour) - urgence(a, jour) || a.nom.localeCompare(b.nom, 'fr'));
+}
+
+/** Les Quick qu'on a le droit de proposer : celles refusées il y a moins de 48 h passent leur tour. */
+export function quicksProposables(taches: Tache[], jour: Jour, maintenant: number = Date.now()): Tache[] {
+  return quicksDuJour(taches, jour).filter((t) => !refuseeRecemment(t, maintenant));
 }
 
 /**

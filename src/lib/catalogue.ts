@@ -14,6 +14,8 @@ export interface TacheCatalogue {
   duree: number; // minutes
   /** Cochée par défaut à la configuration. */
   coche: boolean;
+  /** Proposée par « J'ai 1 min » (30 s à 1 min). Champ séparé de la durée. */
+  quick: boolean;
 }
 
 export interface PieceCatalogue {
@@ -25,12 +27,13 @@ export interface PieceCatalogue {
   taches: TacheCatalogue[];
 }
 
-const t = (nom: string, icone: string, rythme: number, duree: number, coche = true): TacheCatalogue => ({
+const t = (nom: string, icone: string, rythme: number, duree: number, coche = true, quick = duree <= 1): TacheCatalogue => ({
   nom,
   icone,
   rythme,
   duree,
   coche,
+  quick,
 });
 
 export const CATALOGUE: PieceCatalogue[] = [
@@ -40,10 +43,10 @@ export const CATALOGUE: PieceCatalogue[] = [
     icone: 'house',
     coche: true,
     taches: [
-      t('Sortir les poubelles', 'wastebasket', 3, 2),
-      t('Sortir le tri', 'recycling-symbol', 7, 2),
-      t('Vitres', 'window', 30, 45),
-      t('Lancer une lessive', 't-shirt', 4, 5, false),
+      t('Sortir les poubelles', 'wastebasket', 21, 2),
+      t('Sortir le tri', 'recycling-symbol', 10, 2),
+      t('Vitres', 'window', 90, 45),
+      t('Lancer une lessive', 't-shirt', 3, 5, false),
       t('Interrupteurs et poignées', 'light-bulb', 30, 10, false),
       t('Bouches de VMC', 'dashing-away', 180, 15, false),
       t('Purger les radiateurs', 'thermometer', 365, 20, false),
@@ -55,14 +58,13 @@ export const CATALOGUE: PieceCatalogue[] = [
     icone: 'cooking',
     coche: true,
     taches: [
-      t('Vider le lave-vaisselle', 'fork-and-knife-with-plate', 2, 2),
+      t('Vider le lave-vaisselle', 'fork-and-knife-with-plate', 4, 2),
       t('Nettoyer le plan de travail', 'sponge', 2, 5),
-      t('Coup d’éponge sur le plan', 'sponge', 2, 1),
       t('Essuyer la façade du frigo', 'ice', 14, 1),
       t("Nettoyer l'évier", 'potable-water', 7, 5),
       t('Nettoyer les plaques', 'fire', 7, 5),
       t('Laver le sol', 'bucket', 7, 15),
-      t('Micro-ondes', 'timer-clock', 14, 5),
+      t('Micro-ondes', 'timer-clock', 30, 5),
       t('Nettoyer le frigo', 'ice', 30, 20),
       t('Détartrer la bouilloire', 'hot-beverage', 30, 10, false),
       t('Nettoyer le four', 'bread', 60, 30, false),
@@ -78,12 +80,12 @@ export const CATALOGUE: PieceCatalogue[] = [
     taches: [
       t('Lavabo et miroir', 'mirror', 7, 10),
       t('Douche ou baignoire', 'shower', 7, 15),
-      t('Laver le sol', 'bucket', 7, 10),
+      t('Laver le sol', 'bucket', 14, 10),
       t('Changer les serviettes', 'soap', 7, 2),
       t('Essuyer le robinet', 'droplet', 3, 1),
-      t('Coup de chiffon sur le miroir', 'mirror', 4, 1),
+      t('Coup de chiffon sur le miroir', 'mirror', 30, 1),
       t('Détartrer robinets et pommeau', 'droplet', 30, 15, false),
-      t('Vider la poubelle', 'wastebasket', 7, 2, false),
+      t('Vider la poubelle', 'wastebasket', 14, 2, false),
     ],
   },
   {
@@ -181,7 +183,7 @@ export const CATALOGUE: PieceCatalogue[] = [
     icone: 'fire',
     coche: false,
     taches: [
-      t('Vider le creuset', 'bucket', 3, 2),
+      t('Vider le creuset', 'bucket', 7, 2),
       t('Cendrier et aspiration', 'dashing-away', 7, 15),
       t('Nettoyer la vitre', 'window', 7, 5),
       t('Entretien annuel par un pro', 'toolbox', 365, 10),
@@ -266,7 +268,7 @@ export function quicksAAjouter(
       pieces.find((p) => normaliser(p.nom) === normaliser(c.nom)) ?? (c.cle === 'partout' ? undefined : pieces.find((p) => p.icone === c.icone));
     if (!piece) continue;
     const deja = new Set(taches.filter((t) => t.piece_id === piece.id).map((t) => normaliser(t.nom)));
-    for (const t of c.taches) if (t.duree <= 1 && !deja.has(normaliser(t.nom))) res.push({ pieceId: piece.id, tache: t });
+    for (const t of c.taches) if (t.quick && !deja.has(normaliser(t.nom))) res.push({ pieceId: piece.id, tache: t });
   }
   return res;
 }

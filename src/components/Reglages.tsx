@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import { NOM_APPLI, VERSION } from '../config.ts';
 import { aujourdhui } from '../lib/dates.ts';
-import { livrerFichier, versCsv } from '../lib/export.ts';
-import { lireTout, type Maison } from '../lib/useMaison.ts';
+import {
+  csvHistorique,
+  csvJournal,
+  csvPieces,
+  csvProduits,
+  csvProfils,
+  csvTaches,
+  livrerFichier,
+  livrerFichiers,
+  type Fichier,
+} from '../lib/export.ts';
+import { DUREE_TEST_H, lireTout, type Maison } from '../lib/useMaison.ts';
 import type { Message } from './Bandeau.tsx';
 import { Illus } from './Illus.tsx';
 
@@ -29,29 +39,37 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
     }
   };
 
-  const exporter = async (type: 'historique' | 'journal' | 'tout') => {
+  type Export = 'taches' | 'produits' | 'historique' | 'journal' | 'csv' | 'json';
+
+  const exporter = async (type: Export) => {
     if (!foyer) return;
     setAttente(type);
     try {
       const jour = aujourdhui();
-      const prenom = (id: unknown) => maison.profils.find((p) => p.id === id)?.prenom ?? '';
-      if (type === 'historique') {
-        const lignes = await lireTout('menage_historique', foyer.id, 'fait_le');
-        const csv = versCsv(
-          lignes.map((l) => ({ fait_le: l.fait_le, piece: l.piece_nom, tache: l.tache_nom, par: prenom(l.profil_id), enregistre_le: l.cree_le })),
-        );
-        await livrerFichier(`menage-historique-${jour}.csv`, csv, 'text/csv');
+      const csv = (nom: string, contenu: string): Fichier => ({ nom: `menage-${nom}-${jour}.csv`, contenu, type: 'text/csv' });
+      const historique = () => lireTout('menage_historique', foyer.id, 'fait_le');
+      const journal = () => lireTout('menage_journal', foyer.id, 'cree_le');
+      if (type === 'taches') {
+        await livrerFichiers([csv('taches', csvTaches(maison.taches, maison.pieces, maison.profils))]);
+      } else if (type === 'produits') {
+        await livrerFichiers([csv('produits', csvProduits(maison.produits, maison.profils))]);
+      } else if (type === 'historique') {
+        await livrerFichiers([csv('historique', csvHistorique(await historique(), maison.profils))]);
       } else if (type === 'journal') {
-        const lignes = await lireTout('menage_journal', foyer.id, 'cree_le');
-        const csv = versCsv(
-          lignes.map((l) => ({ cree_le: l.cree_le, profil: prenom(l.profil_id), evenement: l.evenement, tache_id: l.tache_id, details: l.details })),
-        );
-        await livrerFichier(`menage-journal-${jour}.csv`, csv, 'text/csv');
-      } else {
-        const [historique, journal] = await Promise.all([
-          lireTout('menage_historique', foyer.id, 'fait_le'),
-          lireTout('menage_journal', foyer.id, 'cree_le'),
+        await livrerFichiers([csv('journal', csvJournal(await journal(), maison.profils))]);
+      } else if (type === 'csv') {
+        // Tout en CSV, d'un coup : chaque ligne garde son id, les fichiers se recoupent entre eux.
+        const [h, j] = await Promise.all([historique(), journal()]);
+        await livrerFichiers([
+          csv('pieces', csvPieces(maison.pieces)),
+          csv('taches', csvTaches(maison.taches, maison.pieces, maison.profils)),
+          csv('produits', csvProduits(maison.produits, maison.profils)),
+          csv('profils', csvProfils(maison.profils)),
+          csv('historique', csvHistorique(h, maison.profils)),
+          csv('journal', csvJournal(j, maison.profils)),
         ]);
+      } else {
+        const [h, j] = await Promise.all([historique(), journal()]);
         const tout = {
           exporte_le: new Date().toISOString(),
           version: VERSION,
@@ -60,8 +78,8 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
           pieces: maison.pieces,
           taches: maison.taches,
           produits: maison.produits,
-          historique,
-          journal,
+          historique: h,
+          journal: j,
         };
         await livrerFichier(`menage-sauvegarde-${jour}.json`, JSON.stringify(tout, null, 2), 'application/json');
       }
@@ -111,18 +129,50 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
 
       <div className="carte-reglage">
         <h2>Vos données</h2>
-        <p className="discret">Tout l’historique et le journal d’utilisation, pour les analyser ailleurs.</p>
+        <p className="discret">Tout est à vous : un fichier CSV par sujet, chaque ligne avec son id, pour les analyser ailleurs.</p>
         <div className="pile">
+          <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('csv')}>
+            {attente === 'csv' ? 'Préparation…' : 'Tout en CSV (6 fichiers)'}
+          </button>
+          <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('taches')}>
+            {attente === 'taches' ? 'Préparation…' : 'Tâches (CSV)'}
+          </button>
+          <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('produits')}>
+            {attente === 'produits' ? 'Préparation…' : 'Produits du placard (CSV)'}
+          </button>
           <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('historique')}>
             {attente === 'historique' ? 'Préparation…' : 'Historique des tâches (CSV)'}
           </button>
           <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('journal')}>
             {attente === 'journal' ? 'Préparation…' : 'Journal d’utilisation (CSV)'}
           </button>
-          <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('tout')}>
-            {attente === 'tout' ? 'Préparation…' : 'Sauvegarde complète (JSON)'}
+          <button className="bouton-secondaire" disabled={attente !== null} onClick={() => exporter('json')}>
+            {attente === 'json' ? 'Préparation…' : 'Sauvegarde complète (JSON)'}
           </button>
         </div>
+        <p className="discret petit">La sauvegarde JSON contient le code de la maison : ne la partage pas.</p>
+      </div>
+
+      <div className="carte-reglage">
+        <h2>Session de test</h2>
+        <p className="discret">
+          Pour essayer l’appli sans fausser les mesures : les événements du journal sont marqués « test » et écartés des
+          analyses. S’éteint toute seule au bout de {DUREE_TEST_H} h.
+        </p>
+        <button
+          className={`interrupteur ${maison.enTest ? 'marche' : ''}`}
+          onClick={() => maison.basculerTest(!maison.enTest)}
+          role="switch"
+          aria-checked={maison.enTest}
+        >
+          <span className="interrupteur-texte">
+            <strong>{maison.enTest ? 'Session de test en cours' : 'Session de test éteinte'}</strong>
+            <span className="discret petit">{maison.enTest ? 'Touche pour l’éteindre' : 'Touche pour l’allumer sur ce téléphone'}</span>
+          </span>
+          <span className="interrupteur-curseur" aria-hidden>
+            <span />
+          </span>
+        </button>
       </div>
 
       <footer className="pied">

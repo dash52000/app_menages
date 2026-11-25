@@ -41,7 +41,17 @@ export interface Tache {
   /** V1.5 (absents tant que la base n'est pas à jour). */
   fiche?: string | null;
   note?: string | null;
+  /** Ids de produits du placard (V1.8 : plus de clés de catalogue mélangées aux ids). */
   produits?: string[] | null;
+  /** V1.8 : clé stable de la fiche du catalogue ; renommer la tâche ne la casse plus. */
+  fiche_id?: string | null;
+  /** V1.9 : tâche proposée par « J'ai 1 min » (séparé de la durée). Absent ou null : on se fie à la durée (1 min ou moins). */
+  quick?: boolean | null;
+  /** V1.9 : dernière fois qu'elle a été refusée via « Autre proposition » (pas reproposée avant 48 h). */
+  refusee_le?: string | null;
+  /** V1.9 : dernier jour où elle a été proposée comme tâche de fond (rotation). */
+  fond_propose_le?: Jour | null;
+  cree_le?: string;
 }
 
 export interface Produit {

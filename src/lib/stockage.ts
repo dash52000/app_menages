@@ -23,4 +23,6 @@ export const CLES = {
   membre: 'coupdefrais.membre',
   cache: 'coupdefrais.cache',
   fileAttente: 'coupdefrais.file',
+  /** Fin (en ms) de la « session de test » de ce téléphone, sinon absent. */
+  test: 'coupdefrais.test',
 } as const;
