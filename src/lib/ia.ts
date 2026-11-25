@@ -27,6 +27,8 @@ const RAISONS: RaisonSansIA[] = ['quota_jour', 'quota_minute', 'indisponible', '
 
 /** Délai côté téléphone : la chaîne serveur prend au plus 3 × 8 s. */
 export const DELAI_IA_MS = 30_000;
+/** Essai depuis Réglages : la fonction accepte jusqu'à 25 s par modèle en session de test. */
+export const DELAI_ESSAI_MS = 90_000;
 
 export async function demanderIA<T>(
   client: AppelFonctions,

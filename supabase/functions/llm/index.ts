@@ -14,7 +14,7 @@
 // - clés Gemini et Groq : secrets Supabase MENAGE_GEMINI_API_KEY et MENAGE_GROQ_API_KEY.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { appelerChaine, CHAINES } from './chaine.ts';
+import { appelerChaine, CHAINES, delaiAppel } from './chaine.ts';
 import { CONSIGNES, IMAGE_MAX_BASE64, TYPES_IMAGE } from './consignes.ts';
 
 const URL_SUPABASE = Deno.env.get('SUPABASE_URL')!;
@@ -86,6 +86,7 @@ Deno.serve(async (req) => {
       groq: Deno.env.get('MENAGE_GROQ_API_KEY') ?? undefined,
     },
     pauses: resa.pauses ?? {},
+    delaiMs: delaiAppel(corps?.test === true),
   });
   const latence = Date.now() - debut;
 
