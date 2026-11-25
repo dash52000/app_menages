@@ -96,6 +96,8 @@ Si un téléphone perd sa session, il rejoint avec le même code et le même pr�
 
 Chaque ligne porte l'identifiant du foyer, et les règles RLS de Supabase ne laissent un téléphone voir que les lignes de son foyer, une fois rattaché par le code. La clé publique `anon` dans `src/config.ts` est publique par nature.
 
+Le code du foyer est la seule clé d'entrée : il est tiré au hasard cryptographique, les essais sont limités (5 codes faux par téléphone en 15 min, 30 pour tout le projet en 1 h) et il n'est écrit ni dans ce repo ni dans la fiche. La sauvegarde JSON le contient : ne pas la partager.
+
 ## Journal d'utilisation
 
 Table `menage_journal` (un événement par ligne, `details` en JSON), exportable depuis Réglages.

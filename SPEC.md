@@ -1,6 +1,6 @@
 # SPEC — Coup de frais
 
-Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.10.0 (jalons J0 à J2 livrés dans le code, migrations à lancer) · Fiche mise à jour : 25/11/2026
+Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.11.0 (J0 à J2 en ligne, migrations F4 et `quick` passées ; J3 sécurité en cours) · Fiche mise à jour : 25/11/2026
 À lire d'abord : `SOCLE.md` (planchers et conventions). Cette fiche ne répète pas le socle.
 
 ---
@@ -50,6 +50,10 @@ Les jours de test (31/10, 01/11, 10/11) gonflent certains chiffres. `supabase/me
 - Catalogue : champ `quick` par tâche, rythmes alignés sur Laeti ; « Coup d'éponge sur le plan » retiré du catalogue (c'était la source du doublon avec « Nettoyer le plan de travail »).
 
 **Réalisé en V1.10 (J2)** : aucun changement de schéma. Nouvel événement `produit_verifie`. Le lien produit ↔ tâche passe par les fiches (`besoins`) et par `taches.produits` (ids) ; « Sert pour » en est déduit.
+
+**Réalisé en V1.11 (J3, sécurité)**
+- `menage_tentatives` (id, user_id, action `rejoindre`/`creer`, ok, cree_le) : trace des essais de code et des créations de foyer, **jamais le code tapé**. RLS sans règle et aucun droit pour `anon`/`authenticated` : invisible depuis l'API. Purgée au-delà de 30 jours.
+- `menage_rejoindre_foyer` et `menage_creer_foyer` renvoient `{ erreur: 'code_inconnu' | 'trop_essais' }` au lieu d'une exception (une exception annulerait la trace de l'essai). L'écran d'arrivée 1.11 lit ce champ.
 
 **Prévu**
 - `llm_appel` (événement du journal) pour la brique IA.
@@ -105,13 +109,25 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 - Auteur par défaut = profil connecté ; « fait par l'autre » en 1 tap : un second rond coloré, à l'initiale de l'autre profil, à côté du ✓ de chaque ligne de pièce (l'ancien « C'était Laeti ? » reste après un ✓).
 - Taux de correction d'auteur sous 10 % sur 2 semaines.
 
-## 8. Sécurité (à traiter avant la brique IA, sur Opus)
+## 8. Sécurité · *relue le 25/11 (J3) ; correctif à lancer après déploiement de la 1.11.0*
 
-- Relire les règles RLS Supabase pour toutes les tables.
-- Le code du foyer (6 caractères) donne accès au foyer : vérifier qu'il n'est pas devinable, limiter les tentatives, ne jamais le mettre dans un repo ni dans une fiche.
-- Le fichier de sauvegarde JSON contient ce code : le traiter comme sensible.
-- Les copies de sécurité du schéma `menage_sauvegarde` (créées par la migration F4) ont la RLS activée et ne sont pas exposées par l'API ; à relire en J3.
-- Définir comment la fonction `llm` identifie le foyer appelant.
+**Audit du 25/11** (règles en base, fonctions, advisors Supabase sécurité et performance)
+- Toutes les tables `menage_*` ont la RLS ; seules les identités connectées (`authenticated`, y compris anonymes) voient des lignes, et seulement celles de leur foyer via `menage_mon_foyer()`. `menage_membres` ne s'écrit que par les fonctions de création et de jonction.
+- Fonctions `security definer` (`menage_mon_foyer`, `menage_creer_foyer`, `menage_rejoindre_foyer`) : `search_path` fixé, exécution refusée à `anon`. L'alerte des advisors à leur sujet est voulue (c'est leur rôle).
+- `menage_sauvegarde` : aucun droit sur le schéma pour `anon`/`authenticated`, RLS active sans règle → inaccessible par l'API. L'alerte « RLS sans règle » est voulue. Copies à supprimer après validation par Damien.
+- Code du foyer : absent du repo, de son historique et de la fiche (vérifié le 25/11 sans l'afficher). Affiché seulement dans Réglages (partage du lien d'invitation) ; la sauvegarde JSON le contient, avec un avertissement dans Réglages.
+- Alerte « connexions anonymes » des advisors : voulue (pas de compte, choix du 30/10).
+
+**Problèmes trouvés et correctif** (`supabase/migrations/2026-11-25_j3_securite.sql`, repris dans `schema.sql`)
+- Aucune limite aux essais de code, alors que la clé publique est lisible dans l'appli : **5 codes faux par téléphone en 15 min, 30 pour tout le projet en 1 h**, puis « trop_essais ». Avec 31⁶ ≈ 887 millions de codes, deviner un foyer prendrait des milliers d'années.
+- Code tiré avec `random()` (non cryptographique) : remplacé par `gen_random_bytes`, sans biais (tirage par rejet).
+- Création de foyers illimitée : 3 par téléphone et 20 pour tout le projet en 24 h.
+- Règles RLS réécrites avec `(select …)` (évaluées une fois par requête) ; droits de table retirés au rôle `anon` ; index ajoutés (`menage_membres.foyer_id`, `.profil_id`, `menage_pieces.foyer_id`).
+- Essai à blanc le 25/11 dans une transaction annulée : 6e code faux bloqué, 4e création bloquée, bon code accepté, `anon` refusé, téléphone sans foyer voit 0 tâche, membre voit 54 tâches ; comptages identiques avant/après (foyers 1, profils 2, membres 3, pièces 9, tâches 54, historique 114, journal 830, produits 18).
+
+**Ordre de mise en ligne** : déployer l'appli 1.11.0 (écran d'arrivée), puis lancer la migration. Les téléphones déjà rattachés ne voient aucune différence.
+
+**Reste à faire en J3** : définir comment la fonction `llm` identifie le foyer appelant (voir §9).
 
 ## 9. IA
 
@@ -159,6 +175,7 @@ NFC ; tâches attitrées ; suivi de rivaux, classements, niveaux, XP ; chat libr
 Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 - **Q6** : heure, canal et contenu du rappel unique (J8).
 - **Q7** : plafond par minute pour les appels IA (10 proposé).
+- **Q9** : les tables de Panier (`produits`, `produits_alias`, `articles_liste`, `courses`, `courses_articles`), dans lesquelles Coup de frais écrit pour « Aux courses », ont une règle « toujours vrai » pour `anon` et `authenticated` : n'importe qui ayant la clé publique peut les lire et les modifier. Hors périmètre de cette fiche (autre appli) ; à traiter dans Panier (Opus).
 - **Q8** : valider avec Laeti la restauration des durées d'avant pour les 8 tâches passées à 1 min (F5).
 
 ## 15. Jalons (modèle indiqué pour économiser les crédits)
@@ -168,7 +185,7 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 | J0 | F1, F4, F7 | Sonnet · code livré en 1.8.0 |
 | J1 | F2, F3, F5, F8 | Sonnet · code livré en 1.9.0 |
 | J2 | F6 | Sonnet · code livré en 1.10.0 |
-| J3 | §8 sécurité et RLS, puis IA0 | Opus |
+| J3 | §8 sécurité et RLS, puis IA0 | Opus · sécurité en 1.11.0 |
 | J4 | IA1 | Sonnet |
 | J5 | IA2 | Sonnet |
 | J6 | IA3 (après 2 semaines de journal propre) | Sonnet |
@@ -185,12 +202,14 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 - **25/11/2026 (J1, choix d'implémentation)** : un refus (« Autre proposition ») met la tâche en pause 48 h dans le check comme dans « J'ai 1 min », sauf si quelqu'un l'a prise (« Je prends ») ; la liste complète des Quick, choisie à la main, garde les tâches refusées ; tâche de fond = plus de 2× son rythme (exactement 2× n'en est pas une) ; une seule par lot de cartes, la rotation prend celle proposée le plus anciennement, et elle est toujours placée dans les cinq cartes ; libellé neutre « Tâche de fond », gris, sans compteur de jours ; `quick` reste vide pour les tâches existantes (repli sur la durée), la migration ne le pose que sur les tâches d'1 min et les 8 tâches de Laeti.
 - **25/11/2026 (J0, choix d'implémentation)** : fusion lessive : on garde la tâche de la Buanderie (5 min, tous les 3 j), « Partout » (celle que Laeti avait passée à 1 min) disparaît, et la tâche gardée reçoit `quick` par la migration J1 ; fusion plan de travail : on garde « Nettoyer le plan de travail » ; l'historique des tâches fusionnées est rattaché à la tâche gardée (renommé en conséquence) et chaque fusion laisse un événement `fusion_taches` ; la session de test s'éteint seule après 3 h ; l'avertissement de nom proche ne s'affiche qu'à la création, jamais à la modification ; copies de sécurité de la migration dans le schéma `menage_sauvegarde`, conservées jusqu'à validation par Damien.
 
+- **25/11/2026 (J3, sécurité)** : limites d'essais 5 par téléphone / 15 min et 30 pour le projet / 1 h (jonction), 3 par téléphone et 20 pour le projet / 24 h (création) ; code toujours à 6 signes (la limite suffit) ; un essai bloqué l'est sans sermon (« laisse passer un quart d'heure ») ; trace des essais sans le code tapé, gardée 30 jours ; les règles de Panier ne sont pas touchées depuis cette appli (Q9).
+
 ## 17. Checklist « terminé » pour cette itération
 
-- [ ] J0 à J2 livrés et vérifiés sur le journal (mesures du §4 recalculées hors tests)
-- [ ] Sauvegarde JSON avant migration F4 et F5, comptage avant/après identique (F4 : essai à blanc OK le 25/11, reste à lancer pour de vrai)
-- [ ] Champ `quick` migré (`2026-11-25_j1_quick.sql`), puis durées des 8 tâches de Laeti restaurées après son accord (`2026-11-25_j1_durees_a_valider.sql`, Q8)
-- [ ] RLS relue (J3) avant toute mise en ligne de l'IA
+- [ ] J0 à J2 livrés (PR #2 mergée le 25/11) et vérifiés sur le journal (mesures du §4 recalculées hors tests)
+- [x] Copie de sécurité avant migration F4 (`menage_sauvegarde`, tables `*_20261125`), comptage avant/après identique : F4 lancée le 25/11 (56 → 54 tâches, historique 114 → 114)
+- [ ] Champ `quick` migré (`2026-11-25_j1_quick.sql`, fait le 25/11), puis durées des 8 tâches de Laeti restaurées après son accord (`2026-11-25_j1_durees_a_valider.sql`, Q8)
+- [ ] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0, avant toute mise en ligne de l'IA
 - [ ] Bascule 429 / 503 testée sur chaque modèle (IA0)
 - [ ] Aucun secret dans le repo ni dans le client
 - [ ] SPEC.md à jour dans le même commit que chaque jalon

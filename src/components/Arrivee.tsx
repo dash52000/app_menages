@@ -15,6 +15,7 @@ function codeDuLien(): string {
 function messageErreur(e: unknown): string {
   const m = String((e as { message?: string } | null)?.message ?? e ?? '');
   if (/code_inconnu/.test(m)) return 'Ce code ne correspond à aucune maison. Vérifie-le auprès de l’autre.';
+  if (/trop_essais/.test(m)) return 'Beaucoup d’essais d’un coup : laisse passer un quart d’heure, puis réessaie.';
   if (/anonymous|anonyme|signups not allowed|disabled/i.test(m)) {
     return 'Les connexions anonymes ne sont pas activées dans Supabase (Authentication → Sign In / Providers → Allow anonymous sign-ins).';
   }
@@ -48,7 +49,10 @@ export function Arrivee({ onPret, alerte }: { onPret: (m: Membre, nouvelle: bool
           ? await supabase.rpc('menage_creer_foyer', { p_prenom: prenom.trim() })
           : await supabase.rpc('menage_rejoindre_foyer', { p_code: code.trim(), p_prenom: prenom.trim() });
       if (r.error) throw r.error;
-      const d = r.data as { foyer_id: string; profil_id: string };
+      // Depuis J3, un code faux ou trop d'essais revient en { erreur } (pas en exception),
+      // pour que la base garde la trace de l'essai.
+      const d = r.data as { foyer_id?: string; profil_id?: string; erreur?: string };
+      if (d?.erreur || !d?.foyer_id || !d?.profil_id) throw new Error(d?.erreur ?? 'reponse_inattendue');
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
       onPret({ foyer_id: d.foyer_id, profil_id: d.profil_id }, mode === 'creer');
     } catch (e) {

@@ -1,5 +1,5 @@
 -- =====================================================================
--- Coup de frais (appli ménage) — schéma Supabase V1.9
+-- Coup de frais (appli ménage) — schéma Supabase V1.11 (J3 : sécurité)
 --
 -- Installation : Supabase > SQL Editor > New query, coller ce fichier, « Run ».
 -- Le script peut être relancé sans casse (il ne supprime rien) : pour passer
@@ -151,7 +151,20 @@ as $$
   select foyer_id from menage_membres where user_id = auth.uid()
 $$;
 
--- ---------- Créer un foyer ------------------------------------------------------------
+-- ---------- Trace des essais de code et des créations (J3, invisible depuis l'API) ------------------------------------------------
+create table if not exists menage_tentatives (
+  id       bigint generated always as identity primary key,
+  user_id  uuid not null,
+  action   text not null check (action in ('rejoindre', 'creer')),
+  ok       boolean not null,
+  cree_le  timestamptz not null default now()
+);
+create index if not exists menage_tentatives_action on menage_tentatives (action, ok, cree_le);
+create index if not exists menage_tentatives_user on menage_tentatives (user_id, action, cree_le);
+alter table menage_tentatives enable row level security;
+revoke all on menage_tentatives from public, anon, authenticated;
+
+-- ---------- Créer un foyer (code cryptographique, limité — J3) ---------------------
 create or replace function menage_creer_foyer(p_prenom text)
 returns json
 language plpgsql
@@ -159,38 +172,56 @@ security definer
 set search_path = public
 as $$
 declare
-  v_alphabet text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';  -- sans 0/O, 1/I/L
+  v_alphabet text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';  -- 31 signes, sans 0/O, 1/I/L
+  v_uid      uuid := auth.uid();
   v_code     text;
+  v_octets   bytea;
+  v_b        integer;
   v_foyer    uuid;
   v_profil   uuid;
 begin
-  if auth.uid() is null then
+  if v_uid is null then
     raise exception 'non_connecte';
   end if;
   if coalesce(trim(p_prenom), '') = '' then
     raise exception 'prenom_manquant';
   end if;
 
+  if (select count(*) from menage_tentatives
+       where user_id = v_uid and action = 'creer' and cree_le > now() - interval '24 hours') >= 3
+     or (select count(*) from menage_tentatives
+       where action = 'creer' and cree_le > now() - interval '24 hours') >= 20 then
+    return json_build_object('erreur', 'trop_essais');
+  end if;
+
   loop
     v_code := '';
-    for i in 1..6 loop
-      v_code := v_code || substr(v_alphabet, 1 + floor(random() * length(v_alphabet))::int, 1);
+    while length(v_code) < 6 loop
+      v_octets := extensions.gen_random_bytes(16);
+      for i in 0..15 loop
+        v_b := get_byte(v_octets, i);
+        -- 248 = 8 × 31 : on écarte 248..255 pour que chaque signe ait la même chance.
+        if v_b < 248 and length(v_code) < 6 then
+          v_code := v_code || substr(v_alphabet, 1 + (v_b % 31), 1);
+        end if;
+      end loop;
     end loop;
     exit when not exists (select 1 from menage_foyers where code = v_code);
   end loop;
 
+  insert into menage_tentatives (user_id, action, ok) values (v_uid, 'creer', true);
   insert into menage_foyers (code) values (v_code) returning id into v_foyer;
   insert into menage_profils (foyer_id, prenom, couleur)
     values (v_foyer, trim(p_prenom), '#3B82F6') returning id into v_profil;
   insert into menage_membres (user_id, foyer_id, profil_id)
-    values (auth.uid(), v_foyer, v_profil)
+    values (v_uid, v_foyer, v_profil)
     on conflict (user_id) do update set foyer_id = excluded.foyer_id, profil_id = excluded.profil_id;
 
   return json_build_object('foyer_id', v_foyer, 'profil_id', v_profil, 'code', v_code);
 end;
 $$;
 
--- ---------- Rejoindre un foyer -----------------------------------------------------
+-- ---------- Rejoindre un foyer (limité — J3) ---------------------------------------
 create or replace function menage_rejoindre_foyer(p_code text, p_prenom text)
 returns json
 language plpgsql
@@ -199,24 +230,41 @@ set search_path = public
 as $$
 declare
   v_couleurs text[] := array['#3B82F6', '#EC4899', '#F59E0B', '#10B981', '#8B5CF6'];
+  v_uid      uuid := auth.uid();
+  v_code     text := upper(regexp_replace(coalesce(p_code, ''), '[^A-Za-z0-9]', '', 'g'));
   v_foyer    uuid;
   v_profil   uuid;
   v_nb       integer;
 begin
-  if auth.uid() is null then
+  if v_uid is null then
     raise exception 'non_connecte';
   end if;
   if coalesce(trim(p_prenom), '') = '' then
     raise exception 'prenom_manquant';
   end if;
 
-  select id into v_foyer
-  from menage_foyers
-  where code = upper(regexp_replace(coalesce(p_code, ''), '[^A-Za-z0-9]', '', 'g'));
+  -- Ménage de la trace (30 jours suffisent).
+  delete from menage_tentatives where cree_le < now() - interval '30 days';
+
+  if (select count(*) from menage_tentatives
+       where user_id = v_uid and action = 'rejoindre' and not ok
+         and cree_le > now() - interval '15 minutes') >= 5
+     or (select count(*) from menage_tentatives
+       where action = 'rejoindre' and not ok
+         and cree_le > now() - interval '1 hour') >= 30 then
+    return json_build_object('erreur', 'trop_essais');
+  end if;
+
+  if length(v_code) = 6 then
+    select id into v_foyer from menage_foyers where code = v_code;
+  end if;
 
   if v_foyer is null then
-    raise exception 'code_inconnu';
+    insert into menage_tentatives (user_id, action, ok) values (v_uid, 'rejoindre', false);
+    return json_build_object('erreur', 'code_inconnu');
   end if;
+
+  insert into menage_tentatives (user_id, action, ok) values (v_uid, 'rejoindre', true);
 
   select id into v_profil
   from menage_profils
@@ -230,11 +278,10 @@ begin
   end if;
 
   insert into menage_membres (user_id, foyer_id, profil_id)
-    values (auth.uid(), v_foyer, v_profil)
+    values (v_uid, v_foyer, v_profil)
     on conflict (user_id) do update set foyer_id = excluded.foyer_id, profil_id = excluded.profil_id;
 
-  return json_build_object('foyer_id', v_foyer, 'profil_id', v_profil, 'code',
-    (select code from menage_foyers where id = v_foyer));
+  return json_build_object('foyer_id', v_foyer, 'profil_id', v_profil, 'code', v_code);
 end;
 $$;
 
@@ -255,44 +302,45 @@ alter table menage_historique enable row level security;
 alter table menage_journal    enable row level security;
 alter table menage_produits   enable row level security;
 
-do $$
-begin
-  if not exists (select 1 from pg_policies where tablename = 'menage_foyers' and policyname = 'mon_foyer') then
-    create policy mon_foyer on menage_foyers for select to authenticated
-      using (id = menage_mon_foyer());
-  end if;
-  if not exists (select 1 from pg_policies where tablename = 'menage_foyers' and policyname = 'mon_foyer_maj') then
-    create policy mon_foyer_maj on menage_foyers for update to authenticated
-      using (id = menage_mon_foyer()) with check (id = menage_mon_foyer());
-  end if;
-  if not exists (select 1 from pg_policies where tablename = 'menage_profils' and policyname = 'mon_foyer') then
-    create policy mon_foyer on menage_profils for select to authenticated
-      using (foyer_id = menage_mon_foyer());
-  end if;
-  if not exists (select 1 from pg_policies where tablename = 'menage_profils' and policyname = 'mon_foyer_maj') then
-    create policy mon_foyer_maj on menage_profils for update to authenticated
-      using (foyer_id = menage_mon_foyer()) with check (foyer_id = menage_mon_foyer());
-  end if;
-  if not exists (select 1 from pg_policies where tablename = 'menage_membres' and policyname = 'moi') then
-    create policy moi on menage_membres for select to authenticated
-      using (user_id = auth.uid());
-  end if;
-end;
-$$;
+-- J3 : règles recréées à chaque passage ; (select …) = évalué une fois par requête.
+drop policy if exists mon_foyer     on menage_foyers;
+drop policy if exists mon_foyer_maj on menage_foyers;
+create policy mon_foyer on menage_foyers for select to authenticated
+  using (id = (select menage_mon_foyer()));
+create policy mon_foyer_maj on menage_foyers for update to authenticated
+  using (id = (select menage_mon_foyer())) with check (id = (select menage_mon_foyer()));
+
+drop policy if exists mon_foyer     on menage_profils;
+drop policy if exists mon_foyer_maj on menage_profils;
+create policy mon_foyer on menage_profils for select to authenticated
+  using (foyer_id = (select menage_mon_foyer()));
+create policy mon_foyer_maj on menage_profils for update to authenticated
+  using (foyer_id = (select menage_mon_foyer())) with check (foyer_id = (select menage_mon_foyer()));
+
+drop policy if exists moi on menage_membres;
+create policy moi on menage_membres for select to authenticated
+  using (user_id = (select auth.uid()));
 
 do $$
 declare
   t text;
 begin
   foreach t in array array['menage_pieces', 'menage_taches', 'menage_historique', 'menage_journal', 'menage_produits'] loop
-    if not exists (select 1 from pg_policies where tablename = t and policyname = 'mon_foyer') then
-      execute format(
-        'create policy mon_foyer on %I for all to authenticated using (foyer_id = menage_mon_foyer()) with check (foyer_id = menage_mon_foyer())',
-        t);
-    end if;
+    execute format('drop policy if exists mon_foyer on %I', t);
+    execute format(
+      'create policy mon_foyer on %I for all to authenticated using (foyer_id = (select menage_mon_foyer())) with check (foyer_id = (select menage_mon_foyer()))',
+      t);
   end loop;
 end;
 $$;
+
+-- Le rôle anon (avant connexion anonyme) n'a rien à lire ni écrire dans menage_*.
+-- Les téléphones connectés en anonyme ont le rôle authenticated : rien ne change pour eux.
+revoke all on
+  menage_foyers, menage_profils, menage_membres, menage_pieces,
+  menage_taches, menage_historique, menage_journal, menage_produits
+from anon;
+
 
 -- ---------- Temps réel : ce que l'un fait apparaît chez l'autre ---------------------
 do $$
@@ -316,10 +364,15 @@ grant select, insert, update, delete on
   menage_taches, menage_historique, menage_journal, menage_produits
 to authenticated;
 
+-- ---------- Index (J3) ---------------------------------------------------------------
+create index if not exists menage_membres_foyer  on menage_membres (foyer_id);
+create index if not exists menage_membres_profil on menage_membres (profil_id);
+create index if not exists menage_pieces_foyer   on menage_pieces (foyer_id);
+
 -- ---------- Fait voir tout de suite les nouvelles tables et colonnes à l'API ----------------
 notify pgrst, 'reload schema';
 
--- ---------- Vérification : les cinq colonnes doivent afficher « true » -----------------------
+-- ---------- Vérification : les six colonnes doivent afficher « true » -----------------------
 select
   to_regclass('public.menage_produits') is not null as placard_ok,
   exists (
@@ -338,4 +391,5 @@ select
     select count(*) = 3 from information_schema.columns
     where table_schema = 'public' and table_name = 'menage_taches'
       and column_name in ('quick', 'refusee_le', 'fond_propose_le')
-  ) as v19_ok;
+  ) as v19_ok,
+  to_regclass('public.menage_tentatives') is not null as securite_j3_ok;
