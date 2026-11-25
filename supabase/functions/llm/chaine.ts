@@ -33,12 +33,6 @@ export const CHAINES: Record<Usage, Modele[]> = {
 };
 
 export const DELAI_MS = 8000;
-/** Mesure du 25/11 : délai allongé, réservé aux appels marqués « test » (Réglages > Essai IA). */
-export const DELAI_TEST_MS = 25000;
-
-export function delaiAppel(test: boolean): number {
-  return test ? DELAI_TEST_MS : DELAI_MS;
-}
 const PAUSE_429_DEFAUT_S = 60;
 const PAUSE_5XX_DEFAUT_S = 30;
 const PAUSE_DELAI_S = 30;

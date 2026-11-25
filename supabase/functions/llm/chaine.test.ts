@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appelerChaine, attenteDemandee, CHAINES, cleModele, DELAI_MS, DELAI_TEST_MS, delaiAppel, type Modele, type Usage } from './chaine.ts';
+import { appelerChaine, attenteDemandee, CHAINES, cleModele, DELAI_MS, type Modele, type Usage } from './chaine.ts';
 import { CONSIGNES } from './consignes.ts';
 
 const T0 = new Date('2026-11-25T14:00:00Z');
@@ -144,12 +144,9 @@ describe.each(['texte', 'vision'] as Usage[])('chaîne %s : bascule modèle par 
   });
 });
 
-describe('délai selon l’appel', () => {
-  it('8 s pour un vrai appel, 25 s seulement pour un essai marqué test', () => {
-    expect(delaiAppel(false)).toBe(DELAI_MS);
+describe('délai par modèle', () => {
+  it('8 s pour tous les appels, essais compris', () => {
     expect(DELAI_MS).toBe(8000);
-    expect(delaiAppel(true)).toBe(DELAI_TEST_MS);
-    expect(DELAI_TEST_MS).toBe(25000);
   });
 });
 
