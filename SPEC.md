@@ -1,6 +1,6 @@
 # SPEC — Coup de frais
 
-Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.12.2 en ligne ; 1.13.0 (IA1) en PR, pas encore mergée · J0 à J2 en ligne, migrations F4, `quick`, J3 sécurité et IA0 passées ; fonction `llm` en version 8 depuis le 25/11 (IA1 ; essai réel IA0 du 25/11 : texte et image OK avec Gemini, délai de 8 s confirmé) · Fiche mise à jour : 25/11/2026
+Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.13.0 (IA1) en ligne depuis le 25/11 (PR #7 mergée, déploiement réussi) · J0 à J2 en ligne, migrations F4, `quick`, J3 sécurité et IA0 passées ; fonction `llm` en version 8 depuis le 25/11 (IA1 ; essai réel IA0 du 25/11 : texte et image OK avec Gemini, délai de 8 s confirmé) · Fiche mise à jour : 25/11/2026
 À lire d'abord : `SOCLE.md` (planchers et conventions). Cette fiche ne répète pas le socle.
 
 ---
@@ -168,7 +168,7 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui (V1.13, IA1 : écrire,
 
 **Fini quand…**
 - **IA0 — Brique** : bascule testée en simulant 429 puis 503 sur chaque modèle de la chaîne ; échec complet sans erreur bloquante ; aucun secret dans le client ni le repo. · *code et tests faits en V1.12 (`supabase/functions/llm/chaine.test.ts` : 429 et 503 sur chacun des 6 modèles, délai, JSON invalide, 400/401, réseau coupé, tout en échec ; `src/lib/ia.test.ts` : l'appli reçoit `null`, jamais d'exception) ; essai réel depuis Réglages (« Essai IA », visible en session de test) fait le 25/11 : texte et image OK, bascule observée une fois en vrai*
-- **IA1 — Saisie en langage naturel** : « on a fait la salle de bain à fond » → cartes de cases à cocher parmi les tâches existantes (la liste est fournie au modèle sous forme de références, lue côté serveur), ou carte de nouvelle tâche (pièce, rythme, durée). 3 taps au maximum : écrire, envoyer, OK. · *code et tests faits en V1.13 (`consignes.test.ts` : références, prénoms, bornes, doublons, plafonds ; `chaine.test.ts` : un modèle qui invente des ids fait passer au suivant ; `saisie.test.ts` et `ia.test.ts` côté appli) ; `llm` v8 déployée le 25/11 (version en ligne vérifiée avant : v7 ; code en ligne relu après, conforme au repo) ; **reste** : mise en ligne de la 1.13.0 (merge de la PR) et essai réel avec de vraies phrases*
+- **IA1 — Saisie en langage naturel** : « on a fait la salle de bain à fond » → cartes de cases à cocher parmi les tâches existantes (la liste est fournie au modèle sous forme de références, lue côté serveur), ou carte de nouvelle tâche (pièce, rythme, durée). 3 taps au maximum : écrire, envoyer, OK. · *code et tests faits en V1.13 (`consignes.test.ts` : références, prénoms, bornes, doublons, plafonds ; `chaine.test.ts` : un modèle qui invente des ids fait passer au suivant ; `saisie.test.ts` et `ia.test.ts` côté appli) ; `llm` v8 déployée le 25/11 (version en ligne vérifiée avant : v7 ; code en ligne relu après, conforme au repo) ; 1.13.0 en ligne le 25/11 (PR #7) ; essai réel avec de vraies phrases le soir du 25/11 : « ça marche bien » (Damien) ; **reste** : relire les événements `ia_saisie` du journal après quelques jours d'usage, et ajuster la consigne si les cartes sont trop larges ou trop timides*
 - **IA2 — Tâches du jour** : le LLM transforme « j'ai 20 min, Laeti rentre à 18 h » en paramètres (minutes, pièces à éviter) ; le **classement est fait par le code** (retard, durée, refus récents). Sans IA, un curseur de durée prend le relais.
 - **IA3 — Revue du journal** : le journal est agrégé en SQL (retards, refus, rythmes modifiés, doublons probables) ; le LLM ne reçoit pas les lignes brutes, formule des propositions et juge les cas ambigus. Résultat mis en cache 7 jours. À lancer seulement après F1 et au moins 2 semaines de journal propre.
 - **IA4 — Photo** : une photo de pièce suggère des tâches, une photo de produit l'ajoute au placard. Image réduite sur le téléphone avant envoi, non stockée, chaîne vision uniquement.
@@ -209,7 +209,7 @@ Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 | J1 | F2, F3, F5, F8 | Sonnet · code livré en 1.9.0 |
 | J2 | F6 | Sonnet · code livré en 1.10.0 |
 | J3 | §8 sécurité et RLS, puis IA0 | Opus · sécurité en 1.11.0, IA0 en 1.12.0 |
-| J4 | IA1 | Sonnet · code livré en 1.13.0 (PR) ; `llm` v8 déployée le 25/11 |
+| J4 | IA1 | Sonnet · 1.13.0 en ligne le 25/11 ; `llm` v8 déployée le 25/11 ; essai réel validé par Damien le 25/11 |
 | J5 | IA2 | Sonnet |
 | J6 | IA3 (après 2 semaines de journal propre) | Sonnet |
 | J7 | IA4 | Sonnet |
@@ -238,5 +238,5 @@ Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 - [x] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0 (lancé le 25/11), avant toute mise en ligne de l'IA
 - [x] Bascule 429 / 503 testée sur chaque modèle (IA0, tests simulés le 25/11) ; essai réel avec les vraies clés fait le 25/11
 - [x] Aucun secret dans le repo ni dans le client (vérifié le 25/11 : code et build)
-- [ ] IA1 : `llm` v8 déployée le 25/11 (version en ligne vérifiée avant : v7 ; code relu après) ; reste : 1.13.0 en ligne, essai réel avec de vraies phrases, événements `ia_saisie` relus dans le journal
+- [x] IA1 : `llm` v8 déployée le 25/11 (version en ligne vérifiée avant : v7 ; code relu après) ; 1.13.0 en ligne le 25/11 ; essai réel avec de vraies phrases validé par Damien le 25/11 ; à suivre : événements `ia_saisie` relus dans le journal après quelques jours d'usage
 - [ ] SPEC.md à jour dans le même commit que chaque jalon
