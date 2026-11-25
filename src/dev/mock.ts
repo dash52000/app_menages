@@ -111,6 +111,18 @@ class Requete {
     if ((w.mockBaseV1 || w.mockBaseV15) && this.table === 'menage_pieces' && this.action === 'select' && this.colonnes.includes('en_pause_depuis')) {
       return { data: null, error: { code: '42703', message: 'column menage_pieces.en_pause_depuis does not exist' } };
     }
+    // window.mockBaseV17 = true : base sans les colonnes récentes de menage_taches (fiche_id…).
+    const RECENTES = ['fiche_id', 'quick', 'refusee_le', 'fond_propose_le'];
+    if (w.mockBaseV17 && this.table === 'menage_taches') {
+      if (this.action === 'insert' || this.action === 'update') {
+        const lignes = Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs];
+        const colonne = RECENTES.find((c) => lignes.some((l: Ligne) => c in l));
+        if (colonne) return { data: null, error: { code: 'PGRST204', message: `Could not find the '${colonne}' column of 'menage_taches'` } };
+      } else if (this.action === 'select') {
+        const colonne = RECENTES.find((c) => this.colonnes.includes(c));
+        if (colonne) return { data: null, error: { code: '42703', message: `column menage_taches.${colonne} does not exist` } };
+      }
+    }
     const t = tables[this.table];
     if (this.action === 'insert') {
       const lignes = (Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs]).map((v: Ligne) => ({

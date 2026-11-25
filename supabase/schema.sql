@@ -1,5 +1,5 @@
 -- =====================================================================
--- Coup de frais (appli ménage) — schéma Supabase V1.6
+-- Coup de frais (appli ménage) — schéma Supabase V1.8
 --
 -- Installation : Supabase > SQL Editor > New query, coller ce fichier, « Run ».
 -- Le script peut être relancé sans casse (il ne supprime rien) : pour passer
@@ -79,6 +79,11 @@ create index if not exists menage_taches_piece on menage_taches (piece_id);
 alter table menage_taches add column if not exists fiche text;      -- clé de la fiche du catalogue
 alter table menage_taches add column if not exists note text;       -- « Mes consignes »
 alter table menage_taches add column if not exists produits text[]; -- null = ceux de la fiche
+
+-- V1.8 : clé stable de la fiche « comment faire » (catalogue). Renommer une tâche ne casse
+-- plus sa fiche. L'ancienne colonne `fiche` reste en place (compatible avec l'appli déjà
+-- installée) ; l'appli lit fiche_id d'abord. Rempli par supabase/migrations/2026-11-25_j0_donnees_propres.sql.
+alter table menage_taches add column if not exists fiche_id text;
 
 -- ---------- Placard : produits ménagers à disposition (V1.5) -------------------
 create table if not exists menage_produits (
@@ -306,7 +311,7 @@ to authenticated;
 -- ---------- Fait voir tout de suite les nouvelles tables et colonnes à l'API ----------------
 notify pgrst, 'reload schema';
 
--- ---------- Vérification : les trois colonnes doivent afficher « true » ------------------------
+-- ---------- Vérification : les quatre colonnes doivent afficher « true » -----------------------
 select
   to_regclass('public.menage_produits') is not null as placard_ok,
   exists (
@@ -316,4 +321,8 @@ select
   exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'menage_pieces' and column_name = 'en_pause_depuis'
-  ) as poele_ok;
+  ) as poele_ok,
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'menage_taches' and column_name = 'fiche_id'
+  ) as v18_ok;

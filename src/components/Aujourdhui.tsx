@@ -16,6 +16,7 @@ import {
 } from '../lib/fraicheur.ts';
 import { libelleDuree } from '../lib/catalogue.ts';
 import { besoinsVisibles } from '../lib/fiches.ts';
+import { evenementFin, evenementSortie } from '../lib/journal.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Action, Profil, Tache } from '../lib/types.ts';
 import { Anneau, phraseJauge } from './Jauge.tsx';
@@ -41,13 +42,15 @@ interface Session {
   debut: number;
   faits: Record<string, Fait>;
   termine: boolean;
-  /** Le journal a déjà reçu la fin (ou l'abandon) de cette session. */
+  /** Le journal a déjà reçu la fin (ou la sortie) de cette session. */
   journalise: boolean;
   reprise: boolean;
   /** « Autre proposition » déjà utilisées dans ce check. */
   autres: number;
   /** Cartes arrivées par « Autre proposition » sans être dues. */
   proposees: string[];
+  /** Toutes les tâches montrées dans ce check, remplacées par « Autre » comprises (pour le journal). */
+  idsProposes: string[];
 }
 
 /** Au-delà de 10 minutes hors de l'appli, on repart sur un check neuf. */
@@ -73,6 +76,7 @@ function nouvelleSession(taches: Tache[], jour: Jour, vus: string[] = []): Sessi
     reprise: false,
     autres: 0,
     proposees: [],
+    idsProposes: ids,
   };
 }
 
@@ -142,16 +146,22 @@ export function Aujourdhui({
       const compte: Record<Action, number> = { fait: 0, fait_autre: 0, demain: 0, je_prends: 0 };
       for (const f of Object.values(s.faits)) compte[f.action] += 1;
       const ailleurs = cartes.filter((t) => !s.faits[t.id] && faiteAilleurs(t)).length;
-      maison.terminerCheck({
-        raison,
-        duree_s: Math.round((Date.now() - s.debut) / 1000),
-        nb_taches: cartes.length,
-        ...compte,
-        faites_ailleurs: ailleurs,
-        ignorees: cartes.length - cartes.filter(traitee).length,
-        jours_couverts: joursCouverts,
-        reprise: s.reprise,
-      });
+      // Toutes les cartes traitées : check_termine. « C'est tout pour aujourd'hui » avec des cartes restantes : check_quitte.
+      maison.terminerCheck(
+        {
+          raison,
+          duree_s: Math.round((Date.now() - s.debut) / 1000),
+          nb_taches: cartes.length,
+          nb_actions: Object.keys(s.faits).length,
+          ...compte,
+          faites_ailleurs: ailleurs,
+          ignorees: cartes.length - cartes.filter(traitee).length,
+          jours_couverts: joursCouverts,
+          reprise: s.reprise,
+          ids: s.idsProposes,
+        },
+        evenementFin(raison),
+      );
       setSession({ ...s, termine: true, journalise: true });
     },
     [cartes, faiteAilleurs, joursCouverts, maison, traitee],
@@ -169,18 +179,21 @@ export function Aujourdhui({
     }
   }, [actif, session, jour, foyer, joursCouverts, maison]);
 
-  // Quitter l'appli au milieu d'un check = abandon (journalisé une fois) ;
-  // revenir vite reprend le même check, revenir tard en ouvre un neuf.
+  // Quitter l'appli au milieu d'un check (journalisé une fois) : check_vu si rien n'a été fait,
+  // check_quitte s'il y a eu au moins une action. Revenir vite reprend le même check, revenir tard en ouvre un neuf.
   useEffect(() => {
     const visibilite = () => {
       const s = sessionRef.current;
       if (document.visibilityState === 'hidden') {
         cache.current = { depuis: Date.now() };
         if (s && !s.termine && !s.journalise && s.ids.length) {
-          maison.noter('check_abandonne', {
+          const nbActions = Object.keys(s.faits).length;
+          maison.noter(evenementSortie(nbActions), {
             duree_s: Math.round((Date.now() - s.debut) / 1000),
-            nb_actions: Object.keys(s.faits).length,
+            nb_actions: nbActions,
             nb_taches: s.ids.length,
+            reprise: s.reprise,
+            ids: s.idsProposes,
           });
           setSession({ ...s, journalise: true });
         }
@@ -251,6 +264,7 @@ export function Aujourdhui({
             ...s,
             ids: s.ids.map((id) => (id === t.id ? suivante.id : id)),
             vus: [...s.vus, suivante.id],
+            idsProposes: [...s.idsProposes, suivante.id],
             autres: s.autres + 1,
             proposees: estDue(suivante, jour) ? s.proposees : [...s.proposees, suivante.id],
           }
@@ -284,6 +298,7 @@ export function Aujourdhui({
     <section className="ecran aujourdhui">
       <header className="entete">
         <h1>{salutation(moiProfil?.prenom ?? '')}</h1>
+        {maison.enTest && <span className="etiquette etiquette-test">Session de test</span>}
       </header>
 
       {pourcent !== null && (

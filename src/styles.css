@@ -1836,3 +1836,15 @@ button.carte-haut:active {
     transition: none;
   }
 }
+
+/* ---------- V1.8 : session de test, nom proche ---------- */
+
+.etiquette-test {
+  background: var(--soleil-pale, var(--piste));
+  color: var(--encre);
+}
+
+.nom-proche {
+  margin: 6px 0 0;
+  color: var(--encre-douce);
+}

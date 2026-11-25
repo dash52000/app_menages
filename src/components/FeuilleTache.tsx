@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { BANQUE_ICONES, CATALOGUE, DUREES, RYTHMES, libelleDuree, libelleRythme } from '../lib/catalogue.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Piece, Produit, Tache } from '../lib/types.ts';
-import { cleFiche } from '../lib/fiches.ts';
+import { nomProche } from '../lib/doublons.ts';
+import { cleFiche, refsEnIds } from '../lib/fiches.ts';
 import { Feuille } from './Feuille.tsx';
 import { Illus } from './Illus.tsx';
 import type { Message } from './Bandeau.tsx';
@@ -27,16 +28,19 @@ export function FeuilleTache({
   const [duree, setDuree] = useState(tache?.duree_min ?? 10);
   const [depuisCatalogue, setDepuisCatalogue] = useState(false);
   const [note, setNote] = useState(tache?.note ?? '');
-  const [produits, setProduits] = useState<string[]>(tache?.produits ?? []);
-  const fiche = cleFiche(nom) ?? tache?.fiche ?? null;
-  // Un produit du catalogue est retenu par sa clé (il reste trouvé même s'il est recréé), un produit maison par son id.
-  const refProduit = (x: Produit) => x.cle ?? x.id;
-  const basculerProduit = (ref: string) => setProduits((l) => (l.includes(ref) ? l.filter((y) => y !== ref) : [...l, ref]));
+  // Les produits d'une tâche sont retenus par leur id (les anciennes clés de catalogue sont converties).
+  const [produits, setProduits] = useState<string[]>(() => refsEnIds(tache?.produits ?? [], maison.produits));
+  const fiche = cleFiche(nom) ?? tache?.fiche_id ?? tache?.fiche ?? null;
+  const basculerProduit = (x: Produit) =>
+    setProduits((l) => (l.includes(x.id) ? l.filter((y) => y !== x.id) : [...l, x.id]));
 
   // Suggestions : les tâches du catalogue pour ce type de pièce, pas encore présentes.
   const presentes = new Set(maison.taches.filter((t) => t.piece_id === piece.id).map((t) => t.nom.toLowerCase()));
   const modele = CATALOGUE.find((p) => p.icone === piece.icone || p.nom.toLowerCase() === piece.nom.toLowerCase());
   const suggestions = tache ? [] : (modele?.taches ?? []).filter((t) => !presentes.has(t.nom.toLowerCase()));
+
+  // Nom proche d'une tâche déjà là (création seulement) : une phrase, jamais un blocage.
+  const proche = tache ? null : nomProche(nom, maison.taches.filter((t) => t.piece_id === piece.id).map((t) => t.nom));
 
   const icones = BANQUE_ICONES.includes(icone) ? BANQUE_ICONES : [icone, ...BANQUE_ICONES];
   const dureesProposees = DUREES.includes(duree) ? DUREES : [...DUREES, duree].sort((a, b) => a - b);
@@ -110,6 +114,11 @@ export function FeuilleTache({
           autoCapitalize="sentences"
         />
       </label>
+      {proche && (
+        <p className="discret petit nom-proche" role="status">
+          « {proche} » existe déjà dans {piece.nom} : c’est peut-être la même.
+        </p>
+      )}
 
       <div className="bloc">
         <p className="etiquette-champ">Illustration</p>
@@ -174,8 +183,8 @@ export function FeuilleTache({
               .map((x) => (
                 <button
                   key={x.id}
-                  className={`puce puce-illus ${produits.includes(refProduit(x)) ? 'active' : ''}`}
-                  onClick={() => basculerProduit(refProduit(x))}
+                  className={`puce puce-illus ${produits.includes(x.id) ? 'active' : ''}`}
+                  onClick={() => basculerProduit(x)}
                 >
                   <Illus nom={x.icone} taille={18} />
                   {x.nom}
