@@ -1848,3 +1848,41 @@ button.carte-haut:active {
   margin: 6px 0 0;
   color: var(--encre-douce);
 }
+
+/* ---------- V1.9 : tâche de fond, « fait par l'autre » en un tap, Quick ---------- */
+
+.etiquette-fond {
+  background: var(--piste);
+  color: var(--encre-douce);
+}
+
+.puce-quick {
+  margin-top: 10px;
+}
+
+.coche-autre {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2.5px var(--profil, var(--soleil));
+  color: var(--encre);
+  font-weight: 800;
+  font-size: 1rem;
+  transition: transform 100ms ease;
+}
+
+.coche-autre:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.coche-autre:disabled {
+  background: var(--profil, var(--soleil));
+  opacity: 1;
+}
+
+.ligne-tache .coches {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}

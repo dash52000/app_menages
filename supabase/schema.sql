@@ -1,5 +1,5 @@
 -- =====================================================================
--- Coup de frais (appli ménage) — schéma Supabase V1.8
+-- Coup de frais (appli ménage) — schéma Supabase V1.9
 --
 -- Installation : Supabase > SQL Editor > New query, coller ce fichier, « Run ».
 -- Le script peut être relancé sans casse (il ne supprime rien) : pour passer
@@ -84,6 +84,14 @@ alter table menage_taches add column if not exists produits text[]; -- null = ce
 -- plus sa fiche. L'ancienne colonne `fiche` reste en place (compatible avec l'appli déjà
 -- installée) ; l'appli lit fiche_id d'abord. Rempli par supabase/migrations/2026-11-25_j0_donnees_propres.sql.
 alter table menage_taches add column if not exists fiche_id text;
+
+-- V1.9 : `quick` (tâche proposée par « J'ai 1 min », séparé de la durée ; null = on se fie à
+-- la durée), `refusee_le` (« Autre proposition » : pas reproposée avant 48 h) et
+-- `fond_propose_le` (rotation des tâches de fond). Rien n'est rempli automatiquement :
+-- l'appli fonctionne comme avant tant que ces colonnes sont vides.
+alter table menage_taches add column if not exists quick boolean;
+alter table menage_taches add column if not exists refusee_le timestamptz;
+alter table menage_taches add column if not exists fond_propose_le date;
 
 -- ---------- Placard : produits ménagers à disposition (V1.5) -------------------
 create table if not exists menage_produits (
@@ -311,7 +319,7 @@ to authenticated;
 -- ---------- Fait voir tout de suite les nouvelles tables et colonnes à l'API ----------------
 notify pgrst, 'reload schema';
 
--- ---------- Vérification : les quatre colonnes doivent afficher « true » -----------------------
+-- ---------- Vérification : les cinq colonnes doivent afficher « true » -----------------------
 select
   to_regclass('public.menage_produits') is not null as placard_ok,
   exists (
@@ -325,4 +333,9 @@ select
   exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'menage_taches' and column_name = 'fiche_id'
-  ) as v18_ok;
+  ) as v18_ok,
+  (
+    select count(*) = 3 from information_schema.columns
+    where table_schema = 'public' and table_name = 'menage_taches'
+      and column_name in ('quick', 'refusee_le', 'fond_propose_le')
+  ) as v19_ok;

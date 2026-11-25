@@ -4,6 +4,7 @@ import {
   MAX_AUTRES,
   MAX_CHECK,
   candidatesCheck,
+  estDeFond,
   estQuick,
   propositionSuivante,
   estDue,
@@ -113,6 +114,15 @@ export function Aujourdhui({
   useEffect(() => {
     if (pret && (!session || session.jour !== jour)) setSession(nouvelleSession(actives, jour));
   }, [pret, session, jour, actives]);
+
+  // La rotation des tâches de fond se souvient de celle qu'on vient de montrer (une écriture par jour au plus).
+  useEffect(() => {
+    if (!actif || !session || session.termine) return;
+    for (const id of session.ids) {
+      const t = actives.find((x) => x.id === id);
+      if (t && estDeFond(t, jour) && !estReserveeLe(t, jour)) maison.marquerFond(t.id);
+    }
+  }, [actif, session, actives, jour, maison]);
 
   const cartes = useMemo(
     () => (session ? session.ids.map((id) => taches.find((t) => t.id === id)).filter((t): t is Tache => Boolean(t)) : []),
@@ -243,12 +253,18 @@ export function Aujourdhui({
   /** Remplace la carte par la tâche suivante ; après trois, ouvre la liste complète. */
   const proposerAutre = (t: Tache) => {
     if (!session) return;
+    maison.refuser(t); // pas reproposée avant 48 h
     if (session.autres >= MAX_AUTRES) {
       maison.noter('autre_proposition', { depuis: 'check', tache: t.nom, rang: session.autres + 1, liste: true }, t.id);
       setAutreFait(true);
       return;
     }
-    const suivante = propositionSuivante(actives, jour, new Set([...session.vus, ...session.ids]));
+    // Au plus une tâche de fond par check : si une autre carte en est une, on n'en remet pas.
+    const fondPresent = session.ids.some((id) => {
+      const x = id === t.id ? undefined : actives.find((a) => a.id === id);
+      return Boolean(x && estDeFond(x, jour));
+    });
+    const suivante = propositionSuivante(actives, jour, new Set([...session.vus, ...session.ids]), { fondPresent });
     maison.noter(
       'autre_proposition',
       { depuis: 'check', tache: t.nom, remplacee_par: suivante?.nom ?? null, rang: session.autres + 1 },
@@ -437,6 +453,7 @@ export function Aujourdhui({
                         {nomPiece(t)} · {libelleDuree(t.duree_min)}
                       </span>
                       {estQuick(t) && <span className="etiquette etiquette-quick">Quick</span>}
+                      {estDeFond(t, jour) && <span className="etiquette etiquette-fond">Tâche de fond</span>}
                       {besoinsVisibles(t, maison.produits).length > 0 && (
                         <LigneProduit options={besoinsVisibles(t, maison.produits)[0]} maison={maison} />
                       )}

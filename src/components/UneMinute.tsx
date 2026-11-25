@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { aujourdhui } from '../lib/dates.ts';
-import { MAX_AUTRES, quicksDuJour, tachesActives } from '../lib/fraicheur.ts';
+import { estQuick, MAX_AUTRES, quicksDuJour, quicksProposables, tachesActives } from '../lib/fraicheur.ts';
 import { quicksAAjouter } from '../lib/catalogue.ts';
 import type { Maison } from '../lib/useMaison.ts';
 import type { Tache } from '../lib/types.ts';
@@ -16,12 +16,14 @@ export function UneMinute({ maison, onFermer, informer }: { maison: Maison; onFe
   const jour = aujourdhui();
   const actives = useMemo(() => tachesActives(maison.taches, maison.pieces), [maison.taches, maison.pieces]);
   const quicks = useMemo(() => quicksDuJour(actives, jour), [actives, jour]);
+  // Les tâches refusées il y a moins de 48 h passent leur tour (la liste, elle, les garde).
+  const proposables = useMemo(() => quicksProposables(actives, jour), [actives, jour]);
   const [passees, setPassees] = useState<string[]>([]);
   const [liste, setListe] = useState(false);
   const nomPiece = (t: Tache) => maison.pieces.find((p) => p.id === t.piece_id)?.nom ?? '';
   const aAjouter = useMemo(() => quicksAAjouter(maison.pieces, maison.taches), [maison.pieces, maison.taches]);
 
-  const proposee = quicks.find((t) => !passees.includes(t.id)) ?? null;
+  const proposee = proposables.find((t) => !passees.includes(t.id)) ?? null;
 
   const faire = (t: Tache) => {
     const annuler = maison.agir(t.id, 'fait', { depuis: 'quick' });
@@ -32,6 +34,7 @@ export function UneMinute({ maison, onFermer, informer }: { maison: Maison; onFe
   };
 
   const autre = (t: Tache) => {
+    maison.refuser(t);
     if (passees.length + 1 >= MAX_AUTRES) {
       maison.noter('autre_proposition', { depuis: 'quick', tache: t.nom, rang: passees.length + 1, liste: true }, t.id);
       setListe(true);
@@ -43,7 +46,7 @@ export function UneMinute({ maison, onFermer, informer }: { maison: Maison; onFe
 
   const ajouterSuggestions = () => {
     for (const a of aAjouter) {
-      maison.ajouterTache(a.pieceId, { nom: a.tache.nom, icone: a.tache.icone, rythme: a.tache.rythme, duree: a.tache.duree }, 'catalogue');
+      maison.ajouterTache(a.pieceId, { nom: a.tache.nom, icone: a.tache.icone, rythme: a.tache.rythme, duree: a.tache.duree, quick: true }, 'catalogue');
     }
     informer({ texte: `${aAjouter.length} tâches Quick ajoutées dans vos pièces` });
   };
@@ -53,7 +56,7 @@ export function UneMinute({ maison, onFermer, informer }: { maison: Maison; onFe
       <Feuille titre="J’ai 1 min" onFermer={onFermer}>
         <div className="vide">
           <Illus nom="sparkles" taille={64} />
-          {maison.taches.some((t) => t.duree_min <= 1) ? (
+          {maison.taches.some((t) => estQuick(t)) ? (
             <>
               <h2>Toutes les Quick sont faites</h2>
               <p className="discret">Rien d’autre à faire en une minute aujourd’hui.</p>
@@ -67,7 +70,7 @@ export function UneMinute({ maison, onFermer, informer }: { maison: Maison; onFe
                   Ajouter {aAjouter.length} Quick dans nos pièces
                 </button>
               )}
-              <p className="discret petit">Toute tâche réglée sur 1 min devient aussi une Quick.</p>
+              <p className="discret petit">Tu peux aussi marquer toute tâche comme Quick en la modifiant.</p>
             </>
           )}
         </div>

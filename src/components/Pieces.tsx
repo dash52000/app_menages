@@ -3,7 +3,7 @@ import { BANQUE_ICONES, CATALOGUE, estSaisonniere, rythmeCourt } from '../lib/ca
 import { aujourdhui, ilYa, jourRelatif } from '../lib/dates.ts';
 import { estDue, estFaiteLe, figeeDepuis, fraicheurAffichee, jauge, tachesActives, urgence, estQuick } from '../lib/fraicheur.ts';
 import type { Maison } from '../lib/useMaison.ts';
-import type { Piece, Tache } from '../lib/types.ts';
+import type { Piece, Profil, Tache } from '../lib/types.ts';
 import { Anneau, Barre } from './Jauge.tsx';
 import { Feuille } from './Feuille.tsx';
 import { FeuilleTache } from './FeuilleTache.tsx';
@@ -129,6 +129,12 @@ function DetailPiece({
   };
   const nomProfil = (id: string | null) => maison.profils.find((p) => p.id === id)?.prenom;
 
+  /** Fait par l'autre en 1 tap, sans passer par ✓ puis « C'était… ? ». */
+  const fairePar = (t: Tache, autre: Profil) => {
+    const annuler = maison.agir(t.id, 'fait_autre', { depuis: 'piece', profilId: autre.id });
+    informer({ texte: `${t.nom} : fait par ${autre.prenom} ✓`, duree: 7000, action: { libelle: 'Annuler', faire: () => annuler() } });
+  };
+
   /** ✓ = moi ; le bandeau propose de corriger (« C'était Laeti ? ») ou d'annuler. */
   const faire = (t: Tache) => {
     const annuler = maison.agir(t.id, 'fait', { depuis: 'piece' });
@@ -208,14 +214,28 @@ function DetailPiece({
                   <Barre fraicheur={f} />
                 </span>
               </button>
-              <button
-                className={`coche-ronde ${faite ? 'faite' : ''}`}
-                onClick={() => faire(t)}
-                disabled={faite}
-                aria-label={faite ? `${t.nom} : déjà faite aujourd’hui` : `${t.nom} : fait`}
-              >
-                ✓
-              </button>
+              <span className="coches">
+                {!faite &&
+                  maison.autres.map((autre) => (
+                    <button
+                      key={autre.id}
+                      className="coche-autre"
+                      style={{ ['--profil' as string]: autre.couleur }}
+                      onClick={() => fairePar(t, autre)}
+                      aria-label={`${t.nom} : fait par ${autre.prenom}`}
+                    >
+                      {autre.prenom.slice(0, 1).toUpperCase()}
+                    </button>
+                  ))}
+                <button
+                  className={`coche-ronde ${faite ? 'faite' : ''}`}
+                  onClick={() => faire(t)}
+                  disabled={faite}
+                  aria-label={faite ? `${t.nom} : déjà faite aujourd’hui` : `${t.nom} : fait`}
+                >
+                  ✓
+                </button>
+              </span>
             </li>
           );
         })}

@@ -1,6 +1,6 @@
 # SPEC — Coup de frais
 
-Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.8.0 (jalon J0 livré dans le code, migration à lancer) · Fiche mise à jour : 25/11/2026
+Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.9.0 (jalons J0 et J1 livrés dans le code, migrations à lancer) · Fiche mise à jour : 25/11/2026
 À lire d'abord : `SOCLE.md` (planchers et conventions). Cette fiche ne répète pas le socle.
 
 ---
@@ -34,7 +34,7 @@ Les jours de test (31/10, 01/11, 10/11) gonflent certains chiffres. `supabase/me
 
 ## 5. Modèle de données
 
-**Existant (export 1.8.0)** : `foyer` (id, code, dernier_check), `profils`, `pieces` (en_pause_depuis), `taches` (rythme_jours, duree_min, derniere_fois, derniere_par, reporte_le, reporte_jusqu_au, reserve_par, reserve_le, fiche, **fiche_id**, note, produits), `produits` (cle, etat ok/bas/vide, indispensable, courses_le), `historique` (tache_nom et piece_nom copiés, donc conservés si la tâche est supprimée), `journal` (evenement, details JSON).
+**Existant (export 1.9.0)** : `foyer` (id, code, dernier_check), `profils`, `pieces` (en_pause_depuis), `taches` (rythme_jours, duree_min, derniere_fois, derniere_par, reporte_le, reporte_jusqu_au, reserve_par, reserve_le, fiche, **fiche_id**, **quick**, **refusee_le**, **fond_propose_le**, note, produits), `produits` (cle, etat ok/bas/vide, indispensable, courses_le), `historique` (tache_nom et piece_nom copiés, donc conservés si la tâche est supprimée), `journal` (evenement, details JSON).
 
 **Réalisé en V1.8 (J0)**
 - `taches.fiche_id` : clé stable de la fiche du catalogue (clé normalisée du nom). Renommer une tâche ne casse plus sa fiche. L'ancienne colonne `fiche` reste en place pour les appareils pas encore à jour ; l'appli lit `fiche_id` d'abord. 51 tâches sur 56 l'ont après migration ; 3 tâches libres n'ont pas de fiche.
@@ -43,8 +43,13 @@ Les jours de test (31/10, 01/11, 10/11) gonflent certains chiffres. `supabase/me
 - Événements : `check_vu` (0 action), `check_quitte` (au moins 1 action), `check_termine` conservé, `session_test`, `fusion_taches`, `migration_donnees`. `check_abandonne` n'est plus écrit (les anciennes lignes restent).
 - Chaque check enregistre `ids` des tâches proposées (remplacements « Autre » compris).
 
+**Réalisé en V1.9 (J1)**
+- `taches.quick` (booléen, décidé le 25/11) : sépare le tag « quick » de la durée. Le mode « J'ai 1 min » s'appuie sur ce champ ; vide (null), l'appli se fie à la durée (1 min ou moins) comme avant. Un interrupteur « Quick » dans la fiche de tâche permet de le choisir sans toucher à la durée.
+- `taches.refusee_le` (horodatage) : écrit à chaque « Autre proposition » (check et « J'ai 1 min »), lu sur les deux téléphones.
+- `taches.fond_propose_le` (jour) : rotation des tâches de fond.
+- Catalogue : champ `quick` par tâche, rythmes alignés sur Laeti ; « Coup d'éponge sur le plan » retiré du catalogue (c'était la source du doublon avec « Nettoyer le plan de travail »).
+
 **Prévu**
-- `taches.quick` (booléen, décidé le 25/11) : sépare le tag « quick » de la durée. Le mode « J'ai 1 min » s'appuie sur ce champ, plus sur `duree_min` (J1).
 - `llm_appel` (événement du journal) pour la brique IA.
 - `ia_usage` (foyer_id, jour, nb_appels) : quota.
 - `propositions_ia` (id, foyer_id, type, payload JSON, statut proposée/acceptée/refusée, cree_le, traite_par) : trace de chaque carte de proposition.
@@ -64,12 +69,12 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 - Un interrupteur « session de test » dans Réglages marque les événements du moment (`details.test`).
 - Les mesures du §4 se recalculent en excluant les sessions de test (`supabase/mesures.sql`).
 
-**F2 — Mode quick qui apprend des refus**
+**F2 — Mode quick qui apprend des refus** · *code fait en V1.9 ; effet à mesurer sur 2 semaines*
 - Une tâche refusée via « autre proposition » n'est pas reproposée avant 48 h (décidé le 25/11).
 - « Aérer la chambre » ne peut plus occuper la première place à chaque ouverture.
 - Sur 2 semaines, la 1re proposition est acceptée dans plus de 50 % des ouvertures.
 
-**F3 — Tâches de fond qui ne s'enlisent pas, sans mur rouge**
+**F3 — Tâches de fond qui ne s'enlisent pas, sans mur rouge** · *code fait en V1.9 ; effet à mesurer sur 2 semaines*
 - Chaque check peut contenir au plus une tâche de fond en retard (plus de 2× son rythme), choisie par rotation.
 - Le libellé est neutre, sans rouge ni compteur de jours de retard. Reporter est sans pénalité.
 - Sur 2 semaines, aucune tâche n'atteint 3× son rythme sans avoir été proposée au moins 2 fois dans un check.
@@ -80,7 +85,7 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 - Produits référencés par id uniquement ; `fiche_id` stable (voir §5).
 - Aucun historique perdu par la migration : comptage avant/après vérifié dans la migration elle-même (annulation si écart) ; essai à blanc sur la vraie base le 25/11 : 56 tâches → 54, historique 114 → 114.
 
-**F5 — Catalogue recalibré**
+**F5 — Catalogue recalibré** · *catalogue et champ `quick` faits en V1.9 ; restauration des durées en attente de Laeti (Q8)*
 - Rythmes par défaut alignés sur ce que Laeti a réglé : miroir 30 j, vitres 90 j, micro-ondes 30 j, lave-vaisselle 4 j, tri 10 j, poubelles noires 21 j, sol et poubelle de la salle de bain 14 j, lessive 3 j, poêle 7 j.
 - `quick` devient un champ séparé de la durée (Q1 : Laeti avait mis des tâches à 1 min pour les faire entrer en quick). Migration : les 8 tâches passées à 1 min le 23/11 passent `quick = vrai` et retrouvent leur durée d'avant (lessive 5, interrupteurs 10, VMC 15, plan de travail 5, lave-vaisselle 2, plaques 5, évier 5, toilettes 10 min) ; à valider avec Laeti avant la migration.
 
@@ -93,9 +98,9 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 **F7 — Export** · *fait en V1.8*
 - Export CSV (tâches, produits, historique, journal, plus pièces et profils) avec ids stables, en plus de la sauvegarde JSON actuelle.
 
-**F8 — Parcours de Laeti**
+**F8 — Parcours de Laeti** · *code fait en V1.9 ; taux de correction à mesurer sur 2 semaines*
 - Cocher depuis une pièce = 1 tap. Fiche = 1 tap.
-- Auteur par défaut = profil connecté ; « fait par l'autre » en 1 tap.
+- Auteur par défaut = profil connecté ; « fait par l'autre » en 1 tap : un second rond coloré, à l'initiale de l'autre profil, à côté du ✓ de chaque ligne de pièce (l'ancien « C'était Laeti ? » reste après un ✓).
 - Taux de correction d'auteur sous 10 % sur 2 semaines.
 
 ## 8. Sécurité (à traiter avant la brique IA, sur Opus)
@@ -159,7 +164,7 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 | Jalon | Contenu | Modèle |
 |---|---|---|
 | J0 | F1, F4, F7 | Sonnet · code livré en 1.8.0 |
-| J1 | F2, F3, F5, F8 | Sonnet |
+| J1 | F2, F3, F5, F8 | Sonnet · code livré en 1.9.0 |
 | J2 | F6 | Sonnet |
 | J3 | §8 sécurité et RLS, puis IA0 | Opus |
 | J4 | IA1 | Sonnet |
@@ -174,13 +179,14 @@ Q1 à Q5 tranchées le 25/11 (voir §16). Restent :
 - **10/11/2026** : ajout de « autre proposition » (3 refus maximum puis liste) et des tâches quick de 30 s à 1 min.
 - **25/11/2026** : clés Gemini et Groq stockées dans Supabase (Edge Function) ; usages IA retenus : saisie en langage naturel, tâches du jour, revue du journal, photo ; forme invisible ; l'IA propose et Damien valide ; accessible aux deux profils ; corrections sans IA acceptées (F1 à F8).
 - **25/11/2026 (réponses Q1 à Q5)** : les tâches à 1 min de Laeti servaient à les faire entrer en quick, donc champ `quick` séparé ; pause de 48 h après un refus ; quota IA de 100 appels par jour et par foyer ; fiches à la demande reportées en V2 ; rappel unique pas encore fait ; Laeti d'accord pour les photos (IA4).
+- **25/11/2026 (J1, choix d'implémentation)** : un refus (« Autre proposition ») met la tâche en pause 48 h dans le check comme dans « J'ai 1 min », sauf si quelqu'un l'a prise (« Je prends ») ; la liste complète des Quick, choisie à la main, garde les tâches refusées ; tâche de fond = plus de 2× son rythme (exactement 2× n'en est pas une) ; une seule par lot de cartes, la rotation prend celle proposée le plus anciennement, et elle est toujours placée dans les cinq cartes ; libellé neutre « Tâche de fond », gris, sans compteur de jours ; `quick` reste vide pour les tâches existantes (repli sur la durée), la migration ne le pose que sur les tâches d'1 min et les 8 tâches de Laeti.
 - **25/11/2026 (J0, choix d'implémentation)** : fusion lessive : on garde la tâche de la Buanderie (rythme 5 j), « Partout » disparaît ; fusion plan de travail : on garde « Nettoyer le plan de travail » ; l'historique des tâches fusionnées est rattaché à la tâche gardée (renommé en conséquence) et chaque fusion laisse un événement `fusion_taches` ; la session de test s'éteint seule après 3 h ; l'avertissement de nom proche ne s'affiche qu'à la création, jamais à la modification ; copies de sécurité de la migration dans le schéma `menage_sauvegarde`, conservées jusqu'à validation par Damien.
 
 ## 17. Checklist « terminé » pour cette itération
 
 - [ ] J0 à J2 livrés et vérifiés sur le journal (mesures du §4 recalculées hors tests)
 - [ ] Sauvegarde JSON avant migration F4 et F5, comptage avant/après identique (F4 : essai à blanc OK le 25/11, reste à lancer pour de vrai)
-- [ ] Champ `quick` migré : les 8 tâches de Laeti ont retrouvé leur durée d'avant
+- [ ] Champ `quick` migré (`2026-11-25_j1_quick.sql`), puis durées des 8 tâches de Laeti restaurées après son accord (`2026-11-25_j1_durees_a_valider.sql`, Q8)
 - [ ] RLS relue (J3) avant toute mise en ligne de l'IA
 - [ ] Bascule 429 / 503 testée sur chaque modèle (IA0)
 - [ ] Aucun secret dans le repo ni dans le client

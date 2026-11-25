@@ -2,7 +2,7 @@
 
 Le suivi du ménage à deux, pour Damien et Laeti. Web app installable (PWA) sur iPhone et Android, synchronisée en temps réel via Supabase, hébergée sur GitHub Pages. Nom provisoire : il se change dans `src/config.ts`, `index.html` et `vite.config.ts`.
 
-Ce dépôt contient la **V1.8** :
+Ce dépôt contient la **V1.9** :
 
 - **Configuration en 5 minutes** : on coche ses pièces, l'appli propose les tâches courantes avec un rythme et une durée par défaut.
 - **Le check du jour** : 5 tâches au plus, les petites victoires d'abord, quatre boutons (Fait, Fait par l'autre, Demain, Je prends). Un check manqué se rattrape au suivant (« Depuis mardi, qu'est-ce qui a été fait ? »), avec « Changer le jour » après coup.
@@ -38,6 +38,22 @@ Nouveautés de la **V1.8** (jalon J0 : journal fiable, données propres, export)
 - **Session de test** (Réglages) : un interrupteur marque les événements du moment (`details.test`) et s'éteint seul après 3 h. `supabase/mesures.sql` recalcule les mesures du SPEC hors tests.
 - **Export CSV** de tâches, produits, historique et journal (ids stables), en plus de la sauvegarde JSON, dans Réglages.
 - **Données propres** : une fiche est liée à sa tâche par `fiche_id` (renommer ne la casse plus), les produits d'une tâche sont référencés par id, et créer une tâche au nom proche d'une existante affiche un avertissement doux, jamais bloquant.
+
+Nouveautés de la **V1.9** (jalon J1 : refus, tâches de fond, Quick, parcours de Laeti) :
+
+- **Un refus se retient 48 h** : une tâche passée avec « Autre » (dans le check ou dans « J'ai 1 min ») n'est pas reproposée avant 48 h, sur les deux téléphones. La liste complète des Quick, elle, les garde.
+- **Tâches de fond sans mur rouge** : au plus une tâche en retard de plus de 2× son rythme par check, choisie à tour de rôle, avec une étiquette grise « Tâche de fond ». Pas de compteur de jours, « Demain » reste sans pénalité.
+- **Quick séparé de la durée** : un interrupteur dans la fiche de tâche. Les 8 tâches que Laeti avait passées à 1 min pourront retrouver leur vraie durée sans quitter « J'ai 1 min ».
+- **Catalogue calé sur les réglages de Laeti** (rythmes), sans doublon « plan de travail ».
+- **« Fait par l'autre » en un tap** dans les pièces : un rond à l'initiale de l'autre profil à côté du ✓.
+
+### Mettre la base à jour (V1.9, après la V1.8)
+
+1. SQL Editor : recoller `supabase/schema.sql` (ajoute `quick`, `refusee_le`, `fond_propose_le` ; `v19_ok` doit afficher `true`).
+2. SQL Editor : `supabase/migrations/2026-11-25_j1_quick.sql` (pose `quick` sur les tâches d'1 min et sur les 8 tâches de Laeti ; ne change aucune durée).
+3. Plus tard, **après accord de Laeti** : `supabase/migrations/2026-11-25_j1_durees_a_valider.sql` (rend leur durée aux 8 tâches ; ne touche qu'à celles encore à 1 min).
+
+Sans ces étapes, l'appli fonctionne comme avant ; les refus et la rotation ne se retiennent alors que sur le téléphone.
 
 ### Mettre la base à jour (V1.8)
 

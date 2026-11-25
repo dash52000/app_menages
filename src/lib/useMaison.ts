@@ -74,7 +74,7 @@ function tableAbsente(e: { code?: string; message?: string } | null): boolean {
  * Colonnes de `menage_taches` ajoutées depuis la V1.7 (schema.sql à recoller) :
  * retirées des envois tant que la base n'est pas à jour.
  */
-export const COLONNES_RECENTES = ['fiche_id'] as const;
+export const COLONNES_RECENTES = ['fiche_id', 'quick', 'refusee_le', 'fond_propose_le'] as const;
 
 /** Colonne ajoutée en V1.6 (interrupteur En marche / À l'arrêt d'une pièce). */
 const COLONNES_16 = ['en_pause_depuis'] as const;
@@ -98,6 +98,8 @@ export interface NouvelleTache {
   duree: number;
   note?: string | null;
   produits?: string[] | null;
+  /** Proposée par « J'ai 1 min » ; absent = on se fie à la durée. */
+  quick?: boolean | null;
 }
 
 export interface NouvellePiece {
@@ -594,6 +596,28 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   );
 
   /**
+   * « Autre proposition » : la tâche passe son tour 48 h (partout, sur les deux téléphones).
+   * Rien d'autre ne change : ni report, ni fraîcheur.
+   */
+  const refuser = useCallback(
+    (t: Tache) => {
+      majTache(t.id, { refusee_le: new Date().toISOString() });
+    },
+    [majTache],
+  );
+
+  /** Tâche de fond proposée dans un check : la rotation s'en souvient (une écriture par jour au plus). */
+  const marquerFond = useCallback(
+    (tacheId: string) => {
+      const jour = aujourdhui();
+      const t = etatRef.current.taches.find((x) => x.id === tacheId);
+      if (!t || t.fond_propose_le === jour) return;
+      majTache(tacheId, { fond_propose_le: jour });
+    },
+    [majTache],
+  );
+
+  /**
    * Fin d'un check : mémorise le jour (rattrapage et futur rappel) et le journalise.
    * Sans détails (une Quick faite avec « J'ai 1 min »), le jour est validé sans journal.
    */
@@ -628,6 +652,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
           duree_min: t.duree,
           fiche: cleFiche(t.nom),
           fiche_id: cleFiche(t.nom),
+          quick: t.quick ?? null,
           note: t.note ?? null,
           produits: t.produits ?? null,
           derniere_fois: derniereFoisInitiale(index++, t.rythme, jour),
@@ -683,6 +708,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
           duree_min: n.duree,
           fiche: cleFiche(n.nom),
           fiche_id: cleFiche(n.nom),
+          quick: n.quick ?? null,
           note: n.note ?? null,
           produits: n.produits ?? null,
           derniere_fois: derniereFoisInitiale(etatRef.current.taches.length, n.rythme, aujourdhui()),
@@ -700,7 +726,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   );
 
   const modifierTache = useCallback(
-    (t: Tache, champs: Partial<Pick<Tache, 'nom' | 'icone' | 'rythme_jours' | 'duree_min' | 'note' | 'produits'>>) => {
+    (t: Tache, champs: Partial<Pick<Tache, 'nom' | 'icone' | 'rythme_jours' | 'duree_min' | 'note' | 'produits' | 'quick'>>) => {
       const pareil = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
       const changes = Object.fromEntries(
         Object.entries(champs).filter(([k, v]) => !pareil(t[k as keyof Tache], v)),
@@ -903,6 +929,8 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     enTest,
     basculerTest,
     agir,
+    refuser,
+    marquerFond,
     terminerCheck,
     creerPieces,
     modifierPiece,
