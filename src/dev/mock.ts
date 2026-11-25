@@ -245,7 +245,7 @@ export function creerClientFactice(): any {
       if (nom === 'menage_rejoindre_foyer') {
         const code = String(args.p_code).toUpperCase().replace(/[^A-Z0-9]/g, '');
         const foyer = tables.menage_foyers.find((f) => f.code === code);
-        if (!foyer) return { data: null, error: { message: 'code_inconnu' } };
+        if (!foyer) return { data: { erreur: 'code_inconnu' }, error: null }; // comme la base depuis J3
         const p = rattacher(foyer.id, args.p_prenom);
         return { data: { foyer_id: foyer.id, profil_id: p.id, code: foyer.code }, error: null };
       }
