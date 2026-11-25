@@ -15,7 +15,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { appelerChaine, CHAINES } from './chaine.ts';
-import { CONSIGNES, IMAGE_MAX_BASE64, TYPES_IMAGE } from './consignes.ts';
+import { CONSIGNES, IMAGE_MAX_BASE64, TYPES_IMAGE, type Lecteur } from './consignes.ts';
 
 const URL_SUPABASE = Deno.env.get('SUPABASE_URL')!;
 const CLE_ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -68,7 +68,20 @@ Deno.serve(async (req) => {
     }
     image = { base64: b, type: t };
   }
-  const demande = consigne.demande(corps.donnees, image);
+
+  // Données du foyer que la consigne demande (ex. liste des tâches) : lues ici avec le jeton de
+  // l'appelant, donc limitées à son foyer par la RLS. Jamais fournies par le téléphone.
+  let contexte: unknown;
+  if (consigne.lire) {
+    const lecteur: Lecteur = async (table, colonnes) => {
+      const { data, error } = await appelant.from(table).select(colonnes);
+      return error || !Array.isArray(data) ? null : (data as unknown as Record<string, unknown>[]);
+    };
+    const lu = await consigne.lire(lecteur);
+    if (lu === null) return reponse(200, { ok: false, raison: 'indisponible' }); // avant le quota : rien n'est consommé
+    contexte = lu;
+  }
+  const demande = consigne.demande(corps.donnees, image, contexte);
   if (!demande) return reponse(400, { ok: false, raison: 'donnees' });
 
   // ---------- Quota (réservé avant l'appel, en une requête verrouillée) ----------
@@ -79,7 +92,7 @@ Deno.serve(async (req) => {
 
   // ---------- Chaîne de modèles ----------
   const debut = Date.now();
-  const r = await appelerChaine(CHAINES[consigne.usage], demande, consigne.valider, {
+  const r = await appelerChaine(CHAINES[consigne.usage], demande, (v) => consigne.valider(v, contexte), {
     fetch,
     cles: {
       gemini: Deno.env.get('MENAGE_GEMINI_API_KEY') ?? undefined,

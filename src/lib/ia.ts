@@ -51,3 +51,27 @@ export async function demanderIA<T>(
     return { sortie: null, raison: 'reseau' };
   }
 }
+
+// ---------- IA1 : saisie en langage naturel ----------
+
+export const SAISIE_TEXTE_MAX = 300;
+
+/** Carte renvoyée par la fonction llm : le serveur a déjà remplacé les références par de vrais ids. */
+export type CarteIA =
+  | { type: 'cocher'; tache_id: string; raison?: string }
+  | { type: 'nouvelle'; nom: string; piece_id: string; rythme_jours: number; duree_min: number; raison?: string };
+
+export interface SortieSaisie {
+  cartes: CarteIA[];
+  /** Cartes écartées par le validateur serveur (référence inconnue, bornes, doublon). */
+  rejetees: number;
+}
+
+/** « On a fait la salle de bain à fond » → cartes à valider. Le modèle n'écrit rien. */
+export function saisirEnLangageNaturel(
+  client: AppelFonctions,
+  texte: string,
+  options: { test?: boolean; delaiMs?: number } = {},
+): Promise<ReponseIA<SortieSaisie>> {
+  return demanderIA<SortieSaisie>(client, 'saisie', { texte: texte.trim().slice(0, SAISIE_TEXTE_MAX) }, options);
+}

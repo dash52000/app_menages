@@ -27,6 +27,7 @@ import { FicheTache } from './FicheTache.tsx';
 import { AutreFait } from './AutreFait.tsx';
 import { UneMinute } from './UneMinute.tsx';
 import { Eclairage } from './Eclairage.tsx';
+import { SaisieIA } from './SaisieIA.tsx';
 import type { Message } from './Bandeau.tsx';
 
 interface Fait {
@@ -508,6 +509,7 @@ export function Aujourdhui({
 
       {taches.length > 0 && (
         <div className="boutons-bas">
+          <SaisieIA maison={maison} informer={informer} />
           <button
             className="bouton-minute"
             onClick={() => {

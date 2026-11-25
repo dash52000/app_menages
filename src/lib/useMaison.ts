@@ -537,7 +537,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
     (
       tacheId: string,
       action: Action,
-      o: { depuis: 'check' | 'piece' | 'autre' | 'quick'; jour?: Jour; profilId?: string; silencieux?: boolean },
+      o: { depuis: 'check' | 'piece' | 'autre' | 'quick' | 'ia'; jour?: Jour; profilId?: string; silencieux?: boolean },
     ): ((silencieux?: boolean) => void) => {
       const t = tacheActuelle(tacheId);
       if (!t) return () => {};
@@ -693,7 +693,7 @@ export function useMaison(membre: Membre, onRefus?: () => void) {
   );
 
   const ajouterTache = useCallback(
-    (pieceId: string, n: NouvelleTache, depuis: 'catalogue' | 'libre') => {
+    (pieceId: string, n: NouvelleTache, depuis: 'catalogue' | 'libre' | 'ia') => {
       const id = uuid();
       executer({
         table: 'menage_taches',

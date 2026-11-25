@@ -1,6 +1,6 @@
 # SPEC — Coup de frais
 
-Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.12.2 (J0 à J2 en ligne, migrations F4, `quick`, J3 sécurité et IA0 passées ; fonction `llm` déployée ; essai réel fait le 25/11 : texte et image OK avec Gemini, délai de 8 s confirmé) · Fiche mise à jour : 25/11/2026
+Repo : `dash52000/app_menages` · Version au 25/11/2026 : 1.12.2 en ligne ; 1.13.0 (IA1) en PR, pas encore mergée · J0 à J2 en ligne, migrations F4, `quick`, J3 sécurité et IA0 passées ; fonction `llm` en version 8 depuis le 25/11 (IA1 ; essai réel IA0 du 25/11 : texte et image OK avec Gemini, délai de 8 s confirmé) · Fiche mise à jour : 25/11/2026
 À lire d'abord : `SOCLE.md` (planchers et conventions). Cette fiche ne répète pas le socle.
 
 ---
@@ -61,15 +61,20 @@ Les jours de test (31/10, 01/11, 10/11) gonflent certains chiffres. `supabase/me
 - Ces deux tables : RLS sans règle, aucun droit pour `anon`/`authenticated` ; seules les fonctions `menage_ia_reserver(foyer)` et `menage_ia_pause(modele, jusqu_au)`, exécutables par `service_role` uniquement, y touchent.
 - Événement `llm_appel` (details : consigne, usage, modele, succes, latence_ms, bascules, essais [modèle, issue, ms], arret, test), **sans contenu**. Deux règles RLS restrictives empêchent un téléphone d'écrire ou de modifier un `llm_appel` ; il peut toujours le lire (export CSV).
 
+**Réalisé en V1.13 (IA1)** : aucun changement de schéma, aucune migration (décidé le 25/11).
+- Les cartes de proposition ne sont pas stockées : elles vivent dans l'état du téléphone le temps du « OK ».
+- Nouvel événement `ia_saisie` (écrit par l'appli, **sans le texte tapé ni le contenu des cartes**) : `issue` (`acceptee` | `refusee` | `vide` | `indisponible`), `nb_chars`, `nb_cartes`, `nb_cocher`, `nb_nouvelles`, `rejetees_serveur`, `ecartees_telephone`, et pour `acceptee` : `nb_cochees`, `nb_creees` ; `raison` quand l'IA n'a pas répondu ; `test` en session de test. Les cartes cochées passent par `agir` (`bouton_tache` avec `depuis: 'ia'`), les créations par `ajouterTache` (`tache_creee` avec `depuis: 'ia'`).
+- `llm_appel` reçoit la consigne `saisie` (même forme, sans contenu).
+
 **Prévu**
-- `propositions_ia` (id, foyer_id, type, payload JSON, statut proposée/acceptée/refusée, cree_le, traite_par) : trace de chaque carte de proposition.
+- `propositions_ia` (id, foyer_id, type, payload JSON, statut proposée/acceptée/refusée, cree_le, traite_par) : **reportée à IA3**, où le résultat mis en cache 7 jours a besoin d'un stockage. Pas utile à IA1 (voir §16, 25/11 IA1).
 
 ## 6. Écrans et parcours
 
 Quatre onglets : **Aujourd'hui** (check, quick, « autre proposition » jusqu'à 3 refus puis liste), **Pièces** (tâches par pièce, fiches), **Placard** (produits, courses), **Réglages** (dont export CSV et JSON, session de test).
 
 Parcours de Laeti à protéger : Pièces → cocher en 1 tap ; fiche en 1 tap.
-Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge de propositions dans Réglages (voir §9).
+Ajout : champ « Dis-le en une phrase » dans Aujourd'hui (V1.13, IA1 : écrire, envoyer, OK), bouton photo et badge de propositions dans Réglages (à venir, voir §9).
 
 ## 7. Fini quand… (sans IA)
 
@@ -143,12 +148,19 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 
 **Architecture**
 - Une Edge Function Supabase `llm` (`supabase/functions/llm/`, déployée le 25/11, `verify_jwt` activé). Les clés Gemini et Groq sont des secrets Supabase (`MENAGE_GEMINI_API_KEY`, `MENAGE_GROQ_API_KEY`) : jamais dans le repo, jamais dans le client.
-- Le téléphone n'envoie pas de texte libre au modèle : il choisit une **consigne** par son nom (`consignes.ts`) et envoie des données ; chaque consigne a son validateur JSON. En IA0 : `essai` (texte) et `essai_vision` (image).
+- Le téléphone n'envoie pas de texte libre au modèle : il choisit une **consigne** par son nom (`consignes.ts`) et envoie des données ; chaque consigne a son validateur JSON. En IA0 : `essai` (texte) et `essai_vision` (image). En IA1 : `saisie` (texte), seule consigne qui reçoit une phrase de la personne (300 signes au plus), insérée comme **donnée** dans une consigne fixe qui dit au modèle de n'en suivre aucune instruction ; ce n'est pas un chat : une phrase, une réponse, des cartes.
+- Une consigne peut demander des données du foyer (`lire`) : la fonction les lit **elle-même avec le jeton de l'appelant** (RLS : son foyer, rien d'autre), avant de réserver le quota ; si la lecture échoue, réponse `indisponible` sans quota consommé. Le téléphone n'envoie jamais d'id ni de liste de tâches.
 - Chaînes (choisies le 25/11 d'après les docs du jour) : **texte** `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → Groq `openai/gpt-oss-120b` ; **vision** `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → Groq `qwen/qwen3.8-27b` (seul modèle vision de Groq, en préversion : peut disparaître sans préavis).
 - Basculement : un seul essai par modèle ; sur 429 (en lisant `Retry-After`, sinon le `RetryInfo` de Gemini, sinon 60 s), 5xx dont 503 (30 s par défaut) ou délai dépassé (8 s, pause 30 s), le modèle passe en pause et on essaie le suivant ; sur 400, 401, 403 ou 404, on s'arrête sans basculer (bug ou réglage côté nous). Modèle en pause ou sans clé : sauté. Toute la chaîne en échec : réponse `{ ok: false, raison: 'indisponible' }`, et `demanderIA` (`src/lib/ia.ts`) renvoie `null` sans jamais lever d'erreur : l'appli continue sans IA.
-- **Essai réel du 25/11 (clés enfin lues)** : texte OK (`gemini-3.5-flash-lite`, 1,2 s, aucune bascule) ; image : les deux Gemini dépassent 8 s, la bascule joue pour de vrai et Groq `qwen/qwen3.8-27b` répond en 0,5 s (16,5 s au total). Cause de la lenteur de Gemini non établie : `gemini-3.5-flash-lite` raisonne déjà au niveau minimal par défaut et les modèles 3.x n'ont pas de réglage « sans réflexion », donc ce n'est pas la réflexion. **Mesure du 25/11 au soir (1.12.1, délai de 25 s réservé aux essais)** : 8 appels, tous servis par `gemini-3.5-flash-lite` sans bascule ; image 0,6 à 2,5 s (médiane 1,1 s), texte 0,6 à 0,8 s. Les dépassements de 14 h étaient ponctuels (coup de mou ou démarrage à froid de Gemini), et la bascule a fait son travail. **1.12.2** : échafaudage retiré, 8 s par modèle pour tous les appels. Limite : l'image d'essai est minuscule ; à revérifier avec de vraies photos (jusqu'à 2 Mo) à IA1.
+- **Essai réel du 25/11 (clés enfin lues)** : texte OK (`gemini-3.5-flash-lite`, 1,2 s, aucune bascule) ; image : les deux Gemini dépassent 8 s, la bascule joue pour de vrai et Groq `qwen/qwen3.8-27b` répond en 0,5 s (16,5 s au total). Cause de la lenteur de Gemini non établie : `gemini-3.5-flash-lite` raisonne déjà au niveau minimal par défaut et les modèles 3.x n'ont pas de réglage « sans réflexion », donc ce n'est pas la réflexion. **Mesure du 25/11 au soir (1.12.1, délai de 25 s réservé aux essais)** : 8 appels, tous servis par `gemini-3.5-flash-lite` sans bascule ; image 0,6 à 2,5 s (médiane 1,1 s), texte 0,6 à 0,8 s. Les dépassements de 14 h étaient ponctuels (coup de mou ou démarrage à froid de Gemini), et la bascule a fait son travail. **1.12.2** : échafaudage retiré, 8 s par modèle pour tous les appels. Limite : l'image d'essai est minuscule ; à revérifier avec de vraies photos (jusqu'à 2 Mo) à IA4 (IA1 n'envoie pas d'image).
 - Sorties en JSON validé côté serveur. Un JSON invalide est traité comme un échec du modèle : on essaie le suivant, sans pause.
 - Quota : 100 appels par jour et par foyer, 10 par minute (décidés le 25/11), réservés avant l'appel en une requête verrouillée. Chaque appel réservé est journalisé (`llm_appel`, voir §5), sans le contenu ; les refus de quota ne sont pas journalisés (une boucle ne remplit pas le journal).
+
+**IA1 : saisie en langage naturel (V1.13)**
+- Le modèle reçoit les pièces et les tâches sous forme de références courtes (`p1…`, `t1…`), jamais les ids ; la phrase est envoyée avec les **prénoms du foyer remplacés par « quelqu'un »** (§9 « données envoyées »). Le serveur remappe les références vers les vrais ids.
+- Sortie : `{ cartes, rejetees }`. Carte `cocher` (tâche existante) ou `nouvelle` (nom de 2 à 60 signes, pièce existante, rythme de 1 à 365 j, durée de 1 à 120 min). Validateur : référence inconnue, vrai id donné à la place d'une référence, forme ou bornes hors limites, nom déjà présent dans la même pièce (accents et casse ignorés) → carte rejetée (comptée dans `rejetees`) ; doublons ignorés ; 10 cartes et 3 nouvelles au plus. Des cartes proposées mais aucune valable : échec de ce modèle, on passe au suivant (sans pause). Liste vide : réponse valable, l'appli dit qu'elle n'a rien trouvé.
+- Côté téléphone : deuxième barrière (carte écartée si la tâche ou la pièce n'existe plus localement). Les cartes s'affichent dans une feuille « Je propose », **toutes cochées sauf une tâche déjà faite aujourd'hui** ; la carte « nouvelle » est pré-remplie et modifiable (avertissement doux si un nom proche existe). Un seul « OK » écrit : `agir` pour cocher (auteur = profil connecté, « fait par l'autre » reste possible ensuite), `ajouterTache` pour créer. Bandeau « Annuler » pour l'ensemble. Fermer la feuille ne change rien.
+- IA indisponible, quota ou délai : message neutre qui propose de cocher à la main, rien ne bloque (P1, P2).
 
 **Règle centrale** : le LLM n'écrit jamais en base. Il renvoie des **cartes de proposition** (type, tâche ciblée, avant/après, raison courte). L'appli les affiche avec « OK / Non » ; en cas de OK, le code existant écrit, donc l'annulation actuelle fonctionne. Toute proposition citant un id inconnu est rejetée côté serveur.
 
@@ -156,7 +168,7 @@ Ajout : champ « Dis-le en une phrase » dans Aujourd'hui, bouton photo, badge d
 
 **Fini quand…**
 - **IA0 — Brique** : bascule testée en simulant 429 puis 503 sur chaque modèle de la chaîne ; échec complet sans erreur bloquante ; aucun secret dans le client ni le repo. · *code et tests faits en V1.12 (`supabase/functions/llm/chaine.test.ts` : 429 et 503 sur chacun des 6 modèles, délai, JSON invalide, 400/401, réseau coupé, tout en échec ; `src/lib/ia.test.ts` : l'appli reçoit `null`, jamais d'exception) ; essai réel depuis Réglages (« Essai IA », visible en session de test) fait le 25/11 : texte et image OK, bascule observée une fois en vrai*
-- **IA1 — Saisie en langage naturel** : « on a fait la salle de bain à fond » → cartes de cases à cocher parmi les tâches existantes (la liste avec ids est fournie au modèle), ou carte de nouvelle tâche (pièce, rythme, durée). 3 taps au maximum : écrire, envoyer, OK.
+- **IA1 — Saisie en langage naturel** : « on a fait la salle de bain à fond » → cartes de cases à cocher parmi les tâches existantes (la liste est fournie au modèle sous forme de références, lue côté serveur), ou carte de nouvelle tâche (pièce, rythme, durée). 3 taps au maximum : écrire, envoyer, OK. · *code et tests faits en V1.13 (`consignes.test.ts` : références, prénoms, bornes, doublons, plafonds ; `chaine.test.ts` : un modèle qui invente des ids fait passer au suivant ; `saisie.test.ts` et `ia.test.ts` côté appli) ; `llm` v8 déployée le 25/11 (version en ligne vérifiée avant : v7 ; code en ligne relu après, conforme au repo) ; **reste** : mise en ligne de la 1.13.0 (merge de la PR) et essai réel avec de vraies phrases*
 - **IA2 — Tâches du jour** : le LLM transforme « j'ai 20 min, Laeti rentre à 18 h » en paramètres (minutes, pièces à éviter) ; le **classement est fait par le code** (retard, durée, refus récents). Sans IA, un curseur de durée prend le relais.
 - **IA3 — Revue du journal** : le journal est agrégé en SQL (retards, refus, rythmes modifiés, doublons probables) ; le LLM ne reçoit pas les lignes brutes, formule des propositions et juge les cas ambigus. Résultat mis en cache 7 jours. À lancer seulement après F1 et au moins 2 semaines de journal propre.
 - **IA4 — Photo** : une photo de pièce suggère des tâches, une photo de produit l'ajoute au placard. Image réduite sur le téléphone avant envoi, non stockée, chaîne vision uniquement.
@@ -179,6 +191,8 @@ NFC ; tâches attitrées ; suivi de rivaux, classements, niveaux, XP ; chat libr
 
 - Fiches générées à la demande (« Comment faire ? »), stockées en base : retenues pour la V2 (décidé le 25/11), à reprendre après IA1 à IA4.
 - Fiches illustrées pour les tâches créées librement.
+- IA1, à voir après usage réel : qui l'a fait (« Laeti l'a fait ») et quand (« hier ») dits dans la phrase ; pour l'instant l'auteur est le profil connecté et le jour est aujourd'hui, corrigeables en 1 tap. Une tâche créée par la saisie n'est pas cochée « faite aujourd'hui » d'office.
+- Photo réelle (jusqu'à 2 Mo) à tester avec la chaîne vision : revient à IA4.
 
 ## 14. Questions ouvertes
 
@@ -195,7 +209,7 @@ Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 | J1 | F2, F3, F5, F8 | Sonnet · code livré en 1.9.0 |
 | J2 | F6 | Sonnet · code livré en 1.10.0 |
 | J3 | §8 sécurité et RLS, puis IA0 | Opus · sécurité en 1.11.0, IA0 en 1.12.0 |
-| J4 | IA1 | Sonnet |
+| J4 | IA1 | Sonnet · code livré en 1.13.0 (PR) ; `llm` v8 déployée le 25/11 |
 | J5 | IA2 | Sonnet |
 | J6 | IA3 (après 2 semaines de journal propre) | Sonnet |
 | J7 | IA4 | Sonnet |
@@ -213,6 +227,7 @@ Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 
 - **25/11/2026 (J3/IA0, fonction `llm`)** : le foyer de l'appelant est lu avec son propre jeton (RLS), jamais pris dans la requête ; quota, pauses et `llm_appel` écrits par le serveur seulement, un téléphone ne peut pas écrire de `llm_appel` (Q7 : plafond de 10 appels par minute et par foyer) ; consignes nommées côté serveur, pas de texte libre ; 403 et 404 s'ajoutent à 400/401 (arrêt sans bascule) ; tout 5xx bascule comme 503 ; un JSON invalide fait passer au modèle suivant sans pause ; quota compté en jour de Paris ; essai réel par deux boutons dans Réglages, visibles seulement en session de test.
 - **25/11/2026 (IA0, mesure du délai Gemini)** : on ne coupe pas de « réflexion » (déjà au minimum) ; on mesure d'abord, avec un délai de 25 s réservé aux appels de test, avant tout correctif. Résultat : Gemini répond en 0,6 à 2,5 s, aucun correctif ; on garde 8 s et la bascule (1.12.2).
+- **25/11/2026 (IA1, découpage validé)** : pas de table `propositions_ia` en IA1 (reportée à IA3) : événement journal `ia_saisie` avec seulement des compteurs, aucune migration ; le téléphone n'envoie que la phrase, la fonction lit tâches, pièces et prénoms avec le jeton de l'appelant et donne des références courtes au modèle ; prénoms remplacés par « quelqu'un » avant l'envoi ; validateur strict, carte rejetée plutôt que réponse entière (sauf si plus aucune carte valable) ; cartes cochées par défaut, sauf tâche déjà faite aujourd'hui ; une seule validation « OK », annulation en bloc ; une tâche créée n'est pas cochée faite d'office ; `agir` et `ajouterTache` reçoivent `depuis: 'ia'`.
 - **25/11/2026 (J3, sécurité)** : limites d'essais 5 par téléphone / 15 min et 30 pour le projet / 1 h (jonction), 3 par téléphone et 20 pour le projet / 24 h (création) ; code toujours à 6 signes (la limite suffit) ; un essai bloqué l'est sans sermon (« laisse passer un quart d'heure ») ; trace des essais sans le code tapé, gardée 30 jours ; les règles de Panier ne sont pas touchées depuis cette appli (Q9).
 
 ## 17. Checklist « terminé » pour cette itération
@@ -223,4 +238,5 @@ Q1 à Q5 et Q7 tranchées le 25/11 (voir §16). Restent :
 - [x] RLS relue (J3, fait le 25/11) et correctif `2026-11-25_j3_securite.sql` lancé après déploiement de la 1.11.0 (lancé le 25/11), avant toute mise en ligne de l'IA
 - [x] Bascule 429 / 503 testée sur chaque modèle (IA0, tests simulés le 25/11) ; essai réel avec les vraies clés fait le 25/11
 - [x] Aucun secret dans le repo ni dans le client (vérifié le 25/11 : code et build)
+- [ ] IA1 : `llm` v8 déployée le 25/11 (version en ligne vérifiée avant : v7 ; code relu après) ; reste : 1.13.0 en ligne, essai réel avec de vraies phrases, événements `ia_saisie` relus dans le journal
 - [ ] SPEC.md à jour dans le même commit que chaque jalon
