@@ -1,5 +1,5 @@
 -- =====================================================================
--- Coup de frais (appli ménage) — schéma Supabase V1.11 (J3 : sécurité)
+-- Coup de frais (appli ménage) — schéma Supabase V1.12 (J3 : sécurité ; IA0 : quota et journal de la fonction llm)
 --
 -- Installation : Supabase > SQL Editor > New query, coller ce fichier, « Run ».
 -- Le script peut être relancé sans casse (il ne supprime rien) : pour passer
@@ -369,10 +369,101 @@ create index if not exists menage_membres_foyer  on menage_membres (foyer_id);
 create index if not exists menage_membres_profil on menage_membres (profil_id);
 create index if not exists menage_pieces_foyer   on menage_pieces (foyer_id);
 
+-- ---------- IA0 : compteur ------------------------------------------------------------
+create table if not exists menage_ia_usage (
+  foyer_id      uuid not null references menage_foyers(id) on delete cascade,
+  jour          date not null,
+  nb_appels     integer not null default 0,
+  minute_debut  timestamptz not null default now(),
+  nb_minute     integer not null default 0,
+  primary key (foyer_id, jour)
+);
+alter table menage_ia_usage enable row level security;
+revoke all on menage_ia_usage from public, anon, authenticated;
+
+-- ---------- IA0 : pauses des modèles ------------------------------------------------
+create table if not exists menage_ia_pauses (
+  modele    text primary key,
+  jusqu_au  timestamptz not null
+);
+alter table menage_ia_pauses enable row level security;
+revoke all on menage_ia_pauses from public, anon, authenticated;
+
+-- ---------- IA0 : fonctions du serveur ----------------------------------------------
+create or replace function menage_ia_reserver(p_foyer uuid)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  c_max_jour   constant integer := 100;  -- décidé le 25/11
+  c_max_minute constant integer := 10;   -- Q7, décidé le 25/11
+  v_jour  date := (now() at time zone 'Europe/Paris')::date;
+  v_u     menage_ia_usage;
+  v_neuve boolean;
+begin
+  if p_foyer is null then
+    return json_build_object('statut', 'sans_foyer');
+  end if;
+
+  insert into menage_ia_usage (foyer_id, jour) values (p_foyer, v_jour)
+    on conflict (foyer_id, jour) do nothing;
+  select * into v_u from menage_ia_usage where foyer_id = p_foyer and jour = v_jour for update;
+
+  if v_u.nb_appels >= c_max_jour then
+    return json_build_object('statut', 'quota_jour');
+  end if;
+
+  v_neuve := v_u.minute_debut <= now() - interval '1 minute';
+  if not v_neuve and v_u.nb_minute >= c_max_minute then
+    return json_build_object('statut', 'quota_minute');
+  end if;
+
+  update menage_ia_usage
+     set nb_appels    = nb_appels + 1,
+         minute_debut = case when v_neuve then now() else minute_debut end,
+         nb_minute    = case when v_neuve then 1 else nb_minute + 1 end
+   where foyer_id = p_foyer and jour = v_jour;
+
+  -- 90 jours de compteurs suffisent.
+  delete from menage_ia_usage where jour < v_jour - 90;
+
+  return json_build_object(
+    'statut', 'ok',
+    'pauses', coalesce((select json_object_agg(modele, jusqu_au)
+                          from menage_ia_pauses where jusqu_au > now()), '{}'::json));
+end;
+$$;
+
+create or replace function menage_ia_pause(p_modele text, p_jusqu_au timestamptz)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into menage_ia_pauses (modele, jusqu_au) values (p_modele, p_jusqu_au)
+  on conflict (modele) do update set jusqu_au = greatest(menage_ia_pauses.jusqu_au, excluded.jusqu_au);
+$$;
+
+revoke execute on function menage_ia_reserver(uuid) from public, anon, authenticated;
+revoke execute on function menage_ia_pause(text, timestamptz) from public, anon, authenticated;
+grant execute on function menage_ia_reserver(uuid) to service_role;
+grant execute on function menage_ia_pause(text, timestamptz) to service_role;
+
+-- ---------- IA0 : llm_appel écrit par le serveur seulement ------------------------
+-- Règles « restrictives » : elles s'ajoutent à la règle mon_foyer (les deux doivent passer).
+drop policy if exists sans_llm_appel     on menage_journal;
+drop policy if exists sans_llm_appel_maj on menage_journal;
+create policy sans_llm_appel on menage_journal as restrictive for insert to authenticated
+  with check (evenement <> 'llm_appel');
+create policy sans_llm_appel_maj on menage_journal as restrictive for update to authenticated
+  using (evenement <> 'llm_appel') with check (evenement <> 'llm_appel');
+
 -- ---------- Fait voir tout de suite les nouvelles tables et colonnes à l'API ----------------
 notify pgrst, 'reload schema';
 
--- ---------- Vérification : les six colonnes doivent afficher « true » -----------------------
+-- ---------- Vérification : les sept colonnes doivent afficher « true » -----------------------
 select
   to_regclass('public.menage_produits') is not null as placard_ok,
   exists (
@@ -392,4 +483,5 @@ select
     where table_schema = 'public' and table_name = 'menage_taches'
       and column_name in ('quick', 'refusee_le', 'fond_propose_le')
   ) as v19_ok,
-  to_regclass('public.menage_tentatives') is not null as securite_j3_ok;
+  to_regclass('public.menage_tentatives') is not null as securite_j3_ok,
+  to_regclass('public.menage_ia_usage') is not null as ia0_ok;

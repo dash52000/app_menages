@@ -12,6 +12,8 @@ import {
   livrerFichiers,
   type Fichier,
 } from '../lib/export.ts';
+import { demanderIA, type RaisonSansIA } from '../lib/ia.ts';
+import { supabase } from '../lib/supabase.ts';
 import { DUREE_TEST_H, lireTout, type Maison } from '../lib/useMaison.ts';
 import type { Message } from './Bandeau.tsx';
 import { Illus } from './Illus.tsx';
@@ -21,6 +23,22 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
   const foyer = maison.foyer;
   const moi = maison.profils.find((p) => p.id === maison.moi);
   const installee = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone;
+
+  // IA0 : essai réel de la fonction llm, seulement pendant une session de test.
+  const essayerIA = async (vision: boolean) => {
+    setAttente(vision ? 'ia_photo' : 'ia');
+    const image = vision ? imageEssai() : undefined;
+    const r = vision
+      ? await demanderIA<{ couleur: string }>(supabase, 'essai_vision', {}, { image, test: true })
+      : await demanderIA<{ mot: string }>(supabase, 'essai', {}, { test: true });
+    setAttente(null);
+    if (r.sortie) {
+      const vu = 'couleur' in r.sortie ? r.sortie.couleur : r.sortie.mot;
+      informer({ texte: `IA prête : « ${vu} ».` });
+    } else {
+      informer({ texte: `IA indisponible (${libelleRaison(r.raison)}) : l’appli continue sans.` });
+    }
+  };
 
   const inviter = async () => {
     if (!foyer) return;
@@ -173,6 +191,16 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
             <span />
           </span>
         </button>
+        {maison.enTest && (
+          <div className="pile">
+            <button className="bouton-secondaire" disabled={attente !== null} onClick={() => essayerIA(false)}>
+              {attente === 'ia' ? 'Essai en cours…' : 'Essai IA (texte)'}
+            </button>
+            <button className="bouton-secondaire" disabled={attente !== null} onClick={() => essayerIA(true)}>
+              {attente === 'ia_photo' ? 'Essai en cours…' : 'Essai IA (image)'}
+            </button>
+          </div>
+        )}
       </div>
 
       <footer className="pied">
@@ -185,4 +213,30 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
       </footer>
     </section>
   );
+}
+
+function libelleRaison(r?: RaisonSansIA): string {
+  switch (r) {
+    case 'quota_jour': return 'quota du jour atteint';
+    case 'quota_minute': return 'trop d’appels cette minute';
+    case 'reseau': return 'pas de réponse';
+    case 'sans_foyer': return 'téléphone sans maison';
+    case 'non_connecte': return 'pas connecté';
+    default: return 'modèles indisponibles';
+  }
+}
+
+/** Petite image bleue unie (PNG en base64), pour l'essai de la chaîne vision sans photo. */
+function imageEssai(): { base64: string; type: string } | undefined {
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.fillStyle = '#1D4ED8';
+    ctx.fillRect(0, 0, 64, 64);
+    return { base64: c.toDataURL('image/png').split(',')[1], type: 'image/png' };
+  } catch {
+    return undefined;
+  }
 }
