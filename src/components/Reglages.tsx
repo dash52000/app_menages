@@ -12,7 +12,7 @@ import {
   livrerFichiers,
   type Fichier,
 } from '../lib/export.ts';
-import { demanderIA, type RaisonSansIA } from '../lib/ia.ts';
+import { DELAI_ESSAI_MS, demanderIA, type RaisonSansIA } from '../lib/ia.ts';
 import { supabase } from '../lib/supabase.ts';
 import { DUREE_TEST_H, lireTout, type Maison } from '../lib/useMaison.ts';
 import type { Message } from './Bandeau.tsx';
@@ -29,8 +29,8 @@ export function Reglages({ maison, informer }: { maison: Maison; informer: (m: M
     setAttente(vision ? 'ia_photo' : 'ia');
     const image = vision ? imageEssai() : undefined;
     const r = vision
-      ? await demanderIA<{ couleur: string }>(supabase, 'essai_vision', {}, { image, test: true })
-      : await demanderIA<{ mot: string }>(supabase, 'essai', {}, { test: true });
+      ? await demanderIA<{ couleur: string }>(supabase, 'essai_vision', {}, { image, test: true, delaiMs: DELAI_ESSAI_MS })
+      : await demanderIA<{ mot: string }>(supabase, 'essai', {}, { test: true, delaiMs: DELAI_ESSAI_MS });
     setAttente(null);
     if (r.sortie) {
       const vu = 'couleur' in r.sortie ? r.sortie.couleur : r.sortie.mot;
